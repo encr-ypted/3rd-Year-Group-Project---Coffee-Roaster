@@ -41,23 +41,6 @@ The system is based on a modified fluidised bed coffee roaster using a hot-air p
 
 ---
 
-## Repository Structure
-
-```text
-Smart-Coffee-Roaster/
-│
-├── README.md
-├── docs/
-│   ├── progress-update-7th-may.md
-│
-├── hardware/
-├── software/
-├── ai-models/
-├── images/
-```
-
----
-
 ## Project Updates
 
 - [Progress Update – 7th May 2026](docs/progress-update-7th-may.md)

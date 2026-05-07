@@ -41,31 +41,6 @@ The system is based on a modified fluidised bed coffee roaster using a hot-air p
 
 ---
 
-## Repository Structure
-
-```text
-Smart-Coffee-Roaster/
-│
-├── README.md
-├── docs/
-│   ├── progress-update-7th-may.md
-│
-├── hardware/
-├── software/
-├── ai-models/
-├── images/
-```
-
----
-
-## Project Updates
-
-- [Progress Update – 7th May 2026](docs/progress-update-7th-may.md)
-
-Future updates will be added here throughout the project lifecycle.
-
----
-
 ## Technologies Being Explored
 
 - Embedded systems
@@ -86,30 +61,9 @@ Future updates will be added here throughout the project lifecycle.
 | [Name] | [Role] |
 | [Name] | [Role] |
 | [Name] | [Role] |
-
----
-
-## Current Project Status
-
-The project is currently in the research and planning phase.
-
-Completed so far:
-- IBM Design Thinking for Academia badge
-- IBM AI SkillsBuild badges
-- Initial technical research
-- Early architecture planning
-- Initial requirements definition
-
----
-
-## Next Steps
-
-- Acquire hardware components
-- Begin popcorn popper teardown and testing
-- Prototype temperature sensing
-- Develop basic control logic
-- Create initial system architecture
-- Begin software and AI integration planning
+| [Name] | [Role] |
+| [Name] | [Role] |
+| [Name] | [Role] |
 
 ---
 
@@ -121,6 +75,22 @@ This project aims to improve sustainability in coffee roasting by:
 - Supporting small-batch roasting
 - Exploring energy-efficient control methods
 - Increasing accessibility to roasting technology
+
+---
+
+# Conclusion
+
+The Smart Coffee Roaster project combines sustainability, AI, embedded systems, and control engineering into a practical real-world application.
+
+The project is currently in the research and planning stage, and the team is preparing to begin hardware prototyping and system development.
+
+---
+
+## Project Updates
+
+- [Progress Update – 7th May 2026](docs/progress-update-7th-may.md)
+
+Future updates will be added here throughout the project lifecycle.
 
 ---
 

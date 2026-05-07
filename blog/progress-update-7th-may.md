@@ -32,7 +32,6 @@ All team members have completed the following onboarding tasks:
 
 - IBM Design Thinking for Academia badge
 - Two IBM AI SkillsBuild badges
-- Joined the IBM Student Discord community
 
 These activities helped establish a shared understanding of AI concepts, collaboration, and design thinking methodologies.
 
@@ -145,29 +144,4 @@ We are also evaluating:
 
 Our next development phase will include:
 
-- Hardware acquisition
-- Initial hardware testing
-- Popcorn popper teardown and analysis
-- Temperature sensing prototyping
-- Initial control system development
-- GitHub repository organisation
-- Further refinement of requirements
-
----
-
-# Conclusion
-
-The Smart Coffee Roaster project combines sustainability, AI, embedded systems, and control engineering into a practical real-world application.
-
-The project is currently in the research and planning stage, and the team is preparing to begin hardware prototyping and system development.
-
-Further updates will be added throughout the project lifecycle.
-
----
-
-# Future Update Log
-
-| Date | Summary |
-|---|---|
-| 7 May 2026 | Initial onboarding, planning, and research completed |
-| TBD | Future updates will be added here |
+- 

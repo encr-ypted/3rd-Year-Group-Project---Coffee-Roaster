@@ -128,18 +128,6 @@ At this stage, the architecture is still evolving and may change during prototyp
 
 ---
 
-# Initial User Journey
-
-1. User loads green coffee beans into the roaster.
-2. User selects a roast profile.
-3. Sensors monitor the roasting process.
-4. The control system adjusts heater power and airflow.
-5. Roast data is logged throughout the roast.
-6. Cooling mode activates automatically.
-7. User reviews roast results and analytics.
-
----
-
 # Current Planning and Procurement
 
 Our team is currently preparing to purchase:

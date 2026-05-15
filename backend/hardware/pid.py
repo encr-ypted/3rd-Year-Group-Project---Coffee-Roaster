@@ -1,5 +1,3 @@
-"""PID controller with integral anti-windup."""
-
 import time
 
 class PIDController:

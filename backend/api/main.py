@@ -1,10 +1,3 @@
-"""
-FastAPI WebSocket server for the Smart Coffee Roaster.
-
-  • Default (laptop dev): mock thermal simulation
-  • On the Pi:            ROASTER_HW=1 python api/main.py
-"""
-
 import asyncio
 import os
 import sys

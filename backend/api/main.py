@@ -16,22 +16,11 @@ import uvicorn
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from hardware.mock import MockHardwareManager
+from hardware.controller import RoasterController
 
-USE_HARDWARE = os.environ.get("ROASTER_HW", "0") == "1"
 
-if USE_HARDWARE:
-    try:
-        from hardware.controller import RoasterController
 
-        hw_manager = RoasterController()
-        print("[boot] Real hardware controller loaded")
-    except Exception as exc:
-        print(f"[boot] Hardware init failed ({exc}), falling back to mock")
-        hw_manager = MockHardwareManager()
-else:
-    hw_manager = MockHardwareManager()
-    print("[boot] Mock simulation (set ROASTER_HW=1 on the Pi for real GPIO)")
+hw_manager = RoasterController()
 
 active_connections: list[WebSocket] = []
 

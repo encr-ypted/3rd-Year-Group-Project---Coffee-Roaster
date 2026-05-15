@@ -1,0 +1,502 @@
+<script setup>
+import { useCoffeeRoaster } from '~/composable/useCoffeeRoaster'
+
+const { connect, isConnected, liveData, startRoast, stopRoast, emergencyStop } = useCoffeeRoaster()
+
+const isDark = ref(true)
+
+onMounted(() => {
+  connect()
+  const saved = localStorage.getItem('roaster-theme')
+  if (saved !== null) isDark.value = saved === 'dark'
+})
+
+watch(isDark, (v) => localStorage.setItem('roaster-theme', v ? 'dark' : 'light'))
+
+const tempMin = 20
+const tempMax = 230
+
+const progressPercent = computed(() => {
+  return Math.min(100, Math.max(0, ((liveData.value.temp - tempMin) / (tempMax - tempMin)) * 100))
+})
+
+const stateDisplay = computed(() => {
+  const d = isDark.value
+  const states = {
+    IDLE:     { label: 'Idle',        dot: d ? 'bg-zinc-500'  : 'bg-stone-400',  pill: d ? 'bg-zinc-800/60 text-zinc-300'  : 'bg-stone-100 text-stone-600' },
+    PREHEAT:  { label: 'Preheating',  dot: 'bg-amber-500',   pill: d ? 'bg-amber-500/10 text-amber-400'  : 'bg-amber-50 text-amber-700',   pulse: true },
+    ROASTING: { label: 'Roasting',    dot: 'bg-orange-500',  pill: d ? 'bg-orange-500/10 text-orange-400' : 'bg-orange-50 text-orange-700', pulse: true },
+    COOLING:  { label: 'Cooling',     dot: 'bg-sky-500',     pill: d ? 'bg-sky-500/10 text-sky-400'      : 'bg-sky-50 text-sky-700',       pulse: true },
+    ERROR:    { label: 'Error',       dot: 'bg-red-500',     pill: d ? 'bg-red-500/10 text-red-400'      : 'bg-red-50 text-red-700',       pulse: true },
+  }
+  return states[liveData.value.state] || states.IDLE
+})
+
+const rorSign = computed(() => liveData.value.ror >= 0 ? '+' : '')
+const isIdle = computed(() => liveData.value.state === 'IDLE')
+const isActive = computed(() => ['PREHEAT', 'ROASTING', 'COOLING'].includes(liveData.value.state))
+
+const roastProfiles = [
+  { id: 'light',       name: 'Light',    temp: 196, desc: 'Fruity & bright',    dot: 'bg-amber-400' },
+  { id: 'medium',      name: 'Medium',   temp: 210, desc: 'Balanced & smooth',  dot: 'bg-amber-600' },
+  { id: 'medium-dark', name: 'Med-Dark', temp: 220, desc: 'Rich & full-bodied', dot: 'bg-amber-800' },
+  { id: 'dark',        name: 'Dark',     temp: 230, desc: 'Bold & smoky',       dot: 'bg-amber-950' },
+]
+const selectedProfile = ref(roastProfiles[1])
+
+// Theme color map — keeps the template clean
+const c = computed(() => isDark.value ? {
+  page:       'coffee-dark-bg',
+  header:     'border-b border-white/[0.04]',
+  card:       'bg-[#1a1714] border-white/[0.05] hover:border-white/[0.08]',
+  glowVia:    'via-[rgba(196,138,50,0.25)]',
+  label:      'text-zinc-500',
+  secTitle:   'text-zinc-300',
+  secSub:     'text-zinc-600',
+  value:      'text-white',
+  unit:       'text-zinc-600',
+  tempLg:     'text-white',
+  tempSm:     'text-zinc-600',
+  rorPos:     'text-emerald-400',
+  rorNeg:     'text-sky-400',
+  icon:       'bg-[rgba(212,162,78,0.08)] border border-[rgba(212,162,78,0.1)]',
+  iconHov:    'group-hover:bg-[rgba(212,162,78,0.15)]',
+  iconClr:    'text-gold-400',
+  track:      'bg-zinc-800/80',
+  chartArea:  'bg-[#141210] border border-white/[0.04]',
+  chartBox:   'bg-white/[0.03] border border-white/[0.04]',
+  chartTxt:   'text-zinc-500',
+  chartDim:   'text-zinc-700',
+  profSel:    'border-gold-500/50 bg-gold-400/8 ring-1 ring-gold-400/15',
+  profDef:    'border-white/[0.05] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/[0.08]',
+  profLbl:    'text-zinc-600',
+  profNSel:   'text-gold-300',
+  profNDef:   'text-zinc-400',
+  profTSel:   'text-gold-400',
+  profTDef:   'text-zinc-600',
+  profDesc:   'text-zinc-600',
+  stopBtn:    'bg-gold-600 hover:bg-gold-500 shadow-lg shadow-gold-900/30',
+  estopExtra: 'shadow-[0_0_30px_rgba(239,68,68,0.15)] hover:shadow-[0_0_40px_rgba(239,68,68,0.25)] border border-red-500/30',
+  estopSub:   'text-zinc-600',
+  divider:    'border-white/[0.04]',
+  ringOff:    'focus-visible:ring-offset-[#1a1714]',
+  toggleBg:   'bg-white/[0.06] hover:bg-white/10 text-amber-300',
+  logoBg:     'bg-gold-400/10 border border-gold-400/10',
+  logoClr:    'text-gold-400',
+} : {
+  page:       'coffee-light-bg',
+  header:     'bg-gradient-to-r from-[#1e1408] to-[#3b2f1e] shadow-lg shadow-stone-900/10',
+  card:       'bg-white shadow-[0_1px_3px_rgba(0,0,0,0.04),0_8px_24px_rgba(120,90,50,0.06)] hover:shadow-[0_1px_3px_rgba(0,0,0,0.04),0_12px_32px_rgba(120,90,50,0.10)]',
+  glowVia:    'via-[rgba(196,138,50,0.12)]',
+  label:      'text-stone-400',
+  secTitle:   'text-stone-700',
+  secSub:     'text-stone-400',
+  value:      'text-stone-900',
+  unit:       'text-stone-300',
+  tempLg:     'text-stone-800',
+  tempSm:     'text-stone-400',
+  rorPos:     'text-emerald-700',
+  rorNeg:     'text-sky-700',
+  icon:       'bg-amber-500/10',
+  iconHov:    'group-hover:bg-amber-500/15',
+  iconClr:    'text-amber-600',
+  track:      'bg-stone-200',
+  chartArea:  'bg-[#faf6f1] border border-dashed border-stone-200/80',
+  chartBox:   'bg-stone-200/50',
+  chartTxt:   'text-stone-400',
+  chartDim:   'text-stone-300',
+  profSel:    'border-amber-500 bg-amber-50/80 ring-1 ring-amber-400/30',
+  profDef:    'border-stone-200/80 bg-white hover:border-stone-300 hover:bg-stone-50/50',
+  profLbl:    'text-stone-400',
+  profNSel:   'text-amber-800',
+  profNDef:   'text-stone-700',
+  profTSel:   'text-amber-600',
+  profTDef:   'text-stone-400',
+  profDesc:   'text-stone-400',
+  stopBtn:    'bg-amber-600 hover:bg-amber-700 shadow-lg shadow-amber-900/20',
+  estopExtra: 'shadow-xl shadow-red-500/20 border-2 border-red-700',
+  estopSub:   'text-stone-400',
+  divider:    'border-stone-100',
+  ringOff:    'focus-visible:ring-offset-white',
+  toggleBg:   'bg-white/10 hover:bg-white/20 text-amber-300',
+  logoBg:     'bg-amber-700/30',
+  logoClr:    'text-amber-300',
+})
+</script>
+
+<template>
+  <div :class="c.page" class="min-h-screen transition-colors duration-500">
+
+    <!-- Amber accent line -->
+    <div class="h-[3px] bg-gradient-to-r from-gold-700 via-gold-400 to-gold-700" />
+
+    <!-- ============================== HEADER ============================== -->
+    <header :class="c.header" class="transition-colors duration-500">
+      <div class="max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 py-5 flex items-center justify-between">
+        <div class="flex items-center gap-4">
+          <div class="w-11 h-11 rounded-2xl flex items-center justify-center" :class="c.logoBg">
+            <Icon name="lucide:coffee" class="w-5 h-5" :class="c.logoClr" />
+          </div>
+          <div>
+            <h1 class="text-lg font-extrabold text-white tracking-tight">Smart Roaster</h1>
+            <p class="text-[10px] text-zinc-400 tracking-[0.2em] uppercase font-semibold mt-0.5">
+              Roast Monitor
+            </p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button
+            :class="c.toggleBg"
+            class="w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
+            @click="isDark = !isDark"
+            :title="isDark ? 'Switch to light' : 'Switch to dark'"
+          >
+            <Icon :name="isDark ? 'lucide:sun' : 'lucide:moon'" class="w-4 h-4" />
+          </button>
+
+          <div
+            class="flex items-center gap-2.5 px-4 py-2 rounded-full text-[11px] font-bold tracking-wide uppercase"
+            :class="isConnected
+              ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/15'
+              : 'bg-red-500/10 text-red-400 ring-1 ring-red-500/15'"
+          >
+            <span
+              class="w-1.5 h-1.5 rounded-full"
+              :class="isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'"
+            />
+            {{ isConnected ? 'Online' : 'Offline' }}
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Ambient glow (dark only) -->
+    <div
+      v-if="isDark"
+      class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gold-500/[0.02] rounded-full blur-3xl pointer-events-none"
+    />
+
+    <!-- ============================== MAIN — SIDEBAR LAYOUT ============================== -->
+    <main class="relative max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 py-8">
+      <div class="xl:grid xl:grid-cols-[320px_1fr] xl:gap-7 space-y-6 xl:space-y-0">
+
+        <!-- ==================== LEFT SIDEBAR ==================== -->
+        <aside class="xl:sticky xl:top-8 xl:self-start space-y-4">
+
+          <!-- Hero Temperature Card -->
+          <div class="card-base" :class="c.card">
+            <div class="glow-line" :class="c.glowVia" />
+            <div class="flex items-center justify-between mb-2">
+              <span class="lbl" :class="c.label">Current Temp</span>
+              <div class="icon-wrap" :class="[c.icon, c.iconHov]">
+                <Icon name="lucide:thermometer" class="w-4 h-4" :class="c.iconClr" />
+              </div>
+            </div>
+
+            <p class="text-[3.25rem] leading-none font-extrabold tracking-tighter tabular-nums" :class="c.value">
+              {{ liveData.temp.toFixed(1) }}<span class="text-lg font-semibold ml-1" :class="c.unit">°C</span>
+            </p>
+
+            <!-- Integrated progress gauge -->
+            <div class="mt-5">
+              <div class="relative h-2.5 rounded-full overflow-hidden" :class="c.track">
+                <div class="absolute inset-0 rounded-full bg-gradient-to-r from-emerald-500 via-gold-400 via-[60%] to-red-500 opacity-90" />
+                <div
+                  class="absolute top-0 right-0 h-full transition-all duration-700 ease-out"
+                  :class="c.track"
+                  :style="{ width: `${100 - progressPercent}%` }"
+                />
+              </div>
+              <div class="flex items-center justify-between mt-2">
+                <span class="tick" :class="c.tempSm">{{ tempMin }}°</span>
+                <span class="text-[11px] font-extrabold tabular-nums" :class="c.tempLg">{{ progressPercent.toFixed(0) }}%</span>
+                <span class="tick" :class="c.tempSm">{{ tempMax }}°</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mini Stats Row -->
+          <div class="grid grid-cols-3 gap-3">
+            <!-- Target -->
+            <div class="card-base !p-4 text-center" :class="c.card">
+              <span class="lbl text-[8px]" :class="c.label">Target</span>
+              <p class="text-xl font-extrabold tabular-nums mt-1.5" :class="c.value">
+                {{ liveData.targetTemp.toFixed(0) }}<span class="text-[10px] font-semibold" :class="c.unit">°</span>
+              </p>
+            </div>
+
+            <!-- RoR -->
+            <div class="card-base !p-4 text-center" :class="c.card">
+              <span class="lbl text-[8px]" :class="c.label">RoR</span>
+              <p
+                class="text-xl font-extrabold tabular-nums mt-1.5"
+                :class="liveData.ror >= 0 ? c.rorPos : c.rorNeg"
+              >
+                {{ rorSign }}{{ liveData.ror.toFixed(1) }}<span class="text-[10px] font-semibold" :class="c.unit">°/m</span>
+              </p>
+            </div>
+
+            <!-- State -->
+            <div class="card-base !p-4 flex flex-col items-center justify-center" :class="c.card">
+              <span class="lbl text-[8px] mb-1.5" :class="c.label">State</span>
+              <span
+                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide"
+                :class="stateDisplay.pill"
+              >
+                <span
+                  class="w-1.5 h-1.5 rounded-full"
+                  :class="[stateDisplay.dot, stateDisplay.pulse && 'animate-pulse']"
+                />
+                {{ stateDisplay.label }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Sidebar Controls (visible on xl only, hidden on mobile where it appears below chart) -->
+          <div class="hidden xl:block card-base" :class="c.card">
+            <div class="glow-line" :class="c.glowVia" />
+            <div class="flex items-center gap-3 mb-5">
+              <div class="icon-wrap" :class="c.icon">
+                <Icon name="lucide:sliders-horizontal" class="w-4 h-4" :class="c.iconClr" />
+              </div>
+              <h3 class="text-xs font-bold uppercase tracking-widest" :class="c.secTitle">Controls</h3>
+            </div>
+
+            <!-- Profile Selector -->
+            <div class="mb-5">
+              <label class="text-[9px] font-bold uppercase tracking-[0.15em] mb-2 block" :class="c.profLbl">
+                Roast Profile
+              </label>
+              <div class="grid grid-cols-2 gap-2">
+                <button
+                  v-for="profile in roastProfiles"
+                  :key="profile.id"
+                  :disabled="!isIdle"
+                  class="prof-btn"
+                  :class="selectedProfile.id === profile.id ? c.profSel : c.profDef"
+                  @click="isIdle && (selectedProfile = profile)"
+                >
+                  <div class="flex items-center gap-1.5 mb-0.5">
+                    <span class="w-2 h-2 rounded-full shrink-0" :class="profile.dot" />
+                    <span
+                      class="text-[11px] font-bold truncate"
+                      :class="selectedProfile.id === profile.id ? c.profNSel : c.profNDef"
+                    >{{ profile.name }}</span>
+                  </div>
+                  <span
+                    class="text-[10px] font-bold tabular-nums"
+                    :class="selectedProfile.id === profile.id ? c.profTSel : c.profTDef"
+                  >{{ profile.temp }}°C</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="space-y-2">
+              <button
+                :disabled="!isIdle || !isConnected"
+                :class="c.ringOff"
+                class="ctrl-btn bg-emerald-600 hover:bg-emerald-500
+                       focus-visible:ring-emerald-500 text-white shadow-lg shadow-emerald-900/30
+                       disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
+                @click="startRoast(selectedProfile.id)"
+              >
+                <Icon name="lucide:play" class="w-4 h-4" />
+                Start Roast
+              </button>
+
+              <button
+                :disabled="!isActive || !isConnected"
+                :class="[c.stopBtn, c.ringOff]"
+                class="ctrl-btn text-white
+                       disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none
+                       focus-visible:ring-amber-500"
+                @click="stopRoast()"
+              >
+                <Icon name="lucide:square" class="w-4 h-4" />
+                Stop &amp; Cool
+              </button>
+            </div>
+
+            <div class="mt-4 pt-4" :class="'border-t ' + c.divider">
+              <button
+                :class="c.estopExtra"
+                class="w-full py-3.5 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98]
+                       text-white font-black text-xs uppercase tracking-[0.2em]
+                       transition-all duration-200 flex items-center justify-center gap-2
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                @click="emergencyStop()"
+              >
+                <Icon name="lucide:shield-alert" class="w-5 h-5" />
+                Emergency Stop
+              </button>
+              <p class="text-[9px] text-center mt-2 tracking-wider uppercase" :class="c.estopSub">
+                Kills heater &amp; fan immediately
+              </p>
+            </div>
+          </div>
+        </aside>
+
+        <!-- ==================== RIGHT MAIN CONTENT ==================== -->
+        <div class="space-y-5">
+
+          <!-- Chart -->
+          <div class="card-base" :class="c.card">
+            <div class="glow-line" :class="c.glowVia" />
+            <div class="flex items-center gap-3 mb-5">
+              <div class="icon-wrap" :class="c.icon">
+                <Icon name="lucide:line-chart" class="w-4 h-4" :class="c.iconClr" />
+              </div>
+              <div>
+                <h3 class="text-xs font-bold uppercase tracking-widest" :class="c.secTitle">Roast Profile</h3>
+                <p class="text-[10px] mt-0.5" :class="c.secSub">Temperature &amp; RoR over time</p>
+              </div>
+            </div>
+
+            <div
+              id="roast-chart-container"
+              class="relative w-full rounded-2xl flex flex-col items-center justify-center"
+              :class="c.chartArea"
+              style="min-height: 440px"
+            >
+              <div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" :class="c.chartBox">
+                <Icon name="lucide:bar-chart-2" class="w-6 h-6" :class="c.chartTxt" />
+              </div>
+              <p class="text-xs font-semibold" :class="c.chartTxt">Chart.js canvas will render here</p>
+              <p class="text-[10px] mt-1.5" :class="c.chartDim">
+                Inject <code class="font-mono" :class="c.chartTxt">&lt;canvas&gt;</code> into
+                <code class="font-mono" :class="c.chartTxt">#roast-chart-container</code>
+              </p>
+            </div>
+          </div>
+
+          <!-- Horizontal Controls Bar (mobile/tablet only — hidden on xl where sidebar has controls) -->
+          <div class="xl:hidden card-base" :class="c.card">
+            <div class="glow-line" :class="c.glowVia" />
+
+            <div class="sm:grid sm:grid-cols-[1fr_auto] sm:gap-6">
+              <!-- Profile Selector -->
+              <div>
+                <label class="text-[9px] font-bold uppercase tracking-[0.15em] mb-2.5 block" :class="c.profLbl">
+                  Roast Profile
+                </label>
+                <div class="grid grid-cols-2 gap-2 mb-4 sm:mb-0">
+                  <button
+                    v-for="profile in roastProfiles"
+                    :key="'m-' + profile.id"
+                    :disabled="!isIdle"
+                    class="prof-btn"
+                    :class="selectedProfile.id === profile.id ? c.profSel : c.profDef"
+                    @click="isIdle && (selectedProfile = profile)"
+                  >
+                    <div class="flex items-center gap-1.5 mb-0.5">
+                      <span class="w-2 h-2 rounded-full shrink-0" :class="profile.dot" />
+                      <span
+                        class="text-[11px] font-bold truncate"
+                        :class="selectedProfile.id === profile.id ? c.profNSel : c.profNDef"
+                      >{{ profile.name }}</span>
+                    </div>
+                    <span
+                      class="text-[10px] font-bold tabular-nums"
+                      :class="selectedProfile.id === profile.id ? c.profTSel : c.profTDef"
+                    >{{ profile.temp }}°C</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Buttons stack -->
+              <div class="flex flex-col gap-2 sm:min-w-[200px]">
+                <button
+                  :disabled="!isIdle || !isConnected"
+                  :class="c.ringOff"
+                  class="ctrl-btn bg-emerald-600 hover:bg-emerald-500
+                         focus-visible:ring-emerald-500 text-white shadow-lg shadow-emerald-900/30
+                         disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
+                  @click="startRoast(selectedProfile.id)"
+                >
+                  <Icon name="lucide:play" class="w-4 h-4" />
+                  Start Roast
+                </button>
+
+                <button
+                  :disabled="!isActive || !isConnected"
+                  :class="[c.stopBtn, c.ringOff]"
+                  class="ctrl-btn text-white
+                         disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none
+                         focus-visible:ring-amber-500"
+                  @click="stopRoast()"
+                >
+                  <Icon name="lucide:square" class="w-4 h-4" />
+                  Stop &amp; Cool
+                </button>
+              </div>
+            </div>
+
+            <div class="mt-5 pt-4" :class="'border-t ' + c.divider">
+              <button
+                :class="c.estopExtra"
+                class="w-full py-4 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98]
+                       text-white font-black text-sm uppercase tracking-[0.2em]
+                       transition-all duration-200 flex items-center justify-center gap-2.5
+                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                @click="emergencyStop()"
+              >
+                <Icon name="lucide:shield-alert" class="w-5 h-5" />
+                Emergency Stop
+              </button>
+              <p class="text-[9px] text-center mt-2.5 tracking-wider uppercase" :class="c.estopSub">
+                Kills heater &amp; fan immediately
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</template>
+
+<style scoped>
+@reference "tailwindcss";
+
+.card-base {
+  @apply relative overflow-hidden rounded-2xl p-6 border transition-all duration-300;
+}
+
+.glow-line {
+  @apply absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent to-transparent;
+}
+
+.lbl {
+  @apply text-[10px] font-bold uppercase tracking-[0.12em];
+}
+
+.icon-wrap {
+  @apply w-9 h-9 rounded-xl flex items-center justify-center transition-colors duration-200;
+}
+
+.val {
+  @apply text-[2.5rem] leading-none font-extrabold tracking-tight tabular-nums;
+}
+
+.val-unit {
+  @apply text-sm font-semibold ml-1;
+}
+
+.tick {
+  @apply text-[10px] font-semibold tabular-nums;
+}
+
+.ctrl-btn {
+  @apply w-full py-3 px-4 rounded-xl font-bold text-xs uppercase tracking-widest
+         flex items-center justify-center gap-2
+         transition-all duration-200 active:scale-[0.97]
+         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+}
+
+.prof-btn {
+  @apply rounded-xl border px-3 py-2.5 text-left cursor-pointer
+         transition-all duration-150
+         disabled:opacity-40 disabled:cursor-not-allowed;
+}
+</style>

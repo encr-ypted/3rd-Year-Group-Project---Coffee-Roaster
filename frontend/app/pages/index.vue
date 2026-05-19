@@ -146,6 +146,13 @@ const c = computed(() => isDark.value ? {
         </div>
 
         <div class="flex items-center gap-3">
+          <NuxtLink
+            to="/hardware-test"
+            class="hidden sm:inline-flex text-[11px] font-semibold px-3 py-2 rounded-xl border transition-colors"
+            :class="isDark ? 'border-white/10 text-zinc-400 hover:text-gold-400' : 'border-stone-200 text-stone-500 hover:text-amber-700'"
+          >
+            HW Test
+          </NuxtLink>
           <button
             :class="c.toggleBg"
             class="w-9 h-9 rounded-xl flex items-center justify-center transition-colors"

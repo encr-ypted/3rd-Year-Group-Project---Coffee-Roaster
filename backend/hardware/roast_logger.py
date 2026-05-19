@@ -13,6 +13,8 @@ import os
 import time
 from datetime import datetime, timezone
 
+from config import LOG_FOLDER, LOG_INDEX_FILE
+
 SAMPLE_COLUMNS = [
     "roast_id",
     "unix_ts",
@@ -46,9 +48,6 @@ INDEX_COLUMNS = [
 
 
 class RoastDataLogger:
-    LOG_FOLDER = "logs"
-    INDEX_FILE = "roasts_index.csv"
-
     def __init__(self, hardware_mode: str = "mock"):
         self.hardware_mode = hardware_mode
         self._active = False
@@ -73,7 +72,7 @@ class RoastDataLogger:
         return self._roast_id
 
     def start_session(self, profile_id: str, target_temp_c: float) -> str:
-        os.makedirs(self.LOG_FOLDER, exist_ok=True)
+        os.makedirs(LOG_FOLDER, exist_ok=True)
 
         self._roast_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self._profile_id = profile_id
@@ -85,7 +84,7 @@ class RoastDataLogger:
         self._last_state = ""
 
         self._csv_path = os.path.join(
-            self.LOG_FOLDER, f"roast_{self._roast_id}.csv"
+            LOG_FOLDER, f"roast_{self._roast_id}.csv"
         )
         self._csv_file = open(self._csv_path, "w", newline="", encoding="utf-8")
         self._writer = csv.writer(self._csv_file)
@@ -179,7 +178,7 @@ class RoastDataLogger:
         return meta_path
 
     def _append_index(self, meta: dict, final_temp_c: float | None) -> None:
-        index_path = os.path.join(self.LOG_FOLDER, self.INDEX_FILE)
+        index_path = os.path.join(LOG_FOLDER, LOG_INDEX_FILE)
         write_header = not os.path.exists(index_path)
 
         with open(index_path, "a", newline="", encoding="utf-8") as f:

@@ -1,7 +1,7 @@
 """
 Real Raspberry Pi hardware manager for the coffee roaster.
 
-Enable on the Pi:  ROASTER_HW=1 python api/main.py
+Enable on the Pi:  python api/main.py
 """
 
 import asyncio
@@ -13,15 +13,11 @@ from hardware.motor import RoasterMotor
 from hardware.pid import PIDController
 from hardware.profiles import target_for_profile
 from hardware.roast_logger import RoastDataLogger
-from hardware.temperature_sensor import RoasterThermocouple
+from hardware.thermocouple import RoasterThermocouple
+import config as cfg
 
 
 class RoasterController:
-    MAX_SAFE_TEMP_C = 250.0
-    OVERSHOOT_CUTOFF_C = 15.0
-    PREHEAT_THRESHOLD_C = 150.0
-    COOL_DOWN_TEMP_C = 50.0
-
     def __init__(self):
         self.is_running = False
         self.state = "IDLE"
@@ -36,8 +32,8 @@ class RoasterController:
         self._session_outcome = "completed"
 
         self.pid = PIDController()
-        self._ror_samples: deque[tuple[float, float]] = deque(maxlen=12)
-        self._logger = RoastDataLogger(hardware_mode="pi")
+        self._ror_samples: deque[tuple[float, float]] = deque(maxlen=cfg.ROR_WINDOW_SAMPLES)
+        self._logger = RoastDataLogger(hardware_mode=cfg.HARDWARE_MODE)
 
         self._tc = RoasterThermocouple()
         self._heater = RoasterHeater()
@@ -64,14 +60,14 @@ class RoasterController:
         self.pid.reset()
         self._ror_samples.clear()
         self._logger.start_session(profile_id, self.target_temp)
-        self.fan_pwm = self._fan.set_speed(1.0)
+        self.fan_pwm = self._fan.set_speed()
 
     def stop_roast(self) -> None:
         self._session_outcome = "stopped"
         self.state = "COOLING"
         self.target_temp = 0.0
         self._heater.stop()
-        self.fan_pwm = self._fan.set_speed(1.0)
+        self.fan_pwm = self._fan.set_speed()
 
     def emergency_stop(self) -> None:
         self.state = "IDLE"
@@ -132,7 +128,7 @@ class RoasterController:
             self.current_temp = temp
             self._ror_samples.append((time.time(), temp))
 
-            if temp > self.MAX_SAFE_TEMP_C and self.state not in ("IDLE", "ERROR"):
+            if temp > cfg.MAX_SAFE_TEMP_C and self.state not in ("IDLE", "ERROR"):
                 self._heater.stop()
                 prev_state = self.state
                 self.state = "ERROR"
@@ -149,15 +145,15 @@ class RoasterController:
                         "type": "error",
                         "msg": (
                             f"Over-temp shutdown "
-                            f"({temp:.1f}°C > {self.MAX_SAFE_TEMP_C}°C)"
+                            f"({temp:.1f}°C > {cfg.MAX_SAFE_TEMP_C}°C)"
                         ),
                     }
                 )
 
             prev_state = self.state
-            if self.state == "PREHEAT" and temp >= self.PREHEAT_THRESHOLD_C:
+            if self.state == "PREHEAT" and temp >= cfg.PREHEAT_THRESHOLD_C:
                 self.state = "ROASTING"
-            elif self.state == "COOLING" and temp <= self.COOL_DOWN_TEMP_C:
+            elif self.state == "COOLING" and temp <= cfg.COOL_DOWN_TEMP_C:
                 self.state = "IDLE"
                 self._fan.stop()
                 self.fan_pwm = 0
@@ -187,18 +183,18 @@ class RoasterController:
                     "state": self.state,
                 }
             )
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
 
     async def _heater_loop(self) -> None:
         while self.is_running:
             if self.state in ("PREHEAT", "ROASTING"):
                 output = self.pid.calculate(self.target_temp, self.current_temp)
 
-                if self.current_temp > self.target_temp + self.OVERSHOOT_CUTOFF_C:
+                if self.current_temp > self.target_temp + cfg.OVERSHOOT_CUTOFF_C:
                     output = 0.0
 
                 self.heater_output = await self._heater.apply_output(output)
             else:
                 self._heater.stop()
                 self.heater_output = 0.0
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)

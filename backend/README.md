@@ -32,6 +32,23 @@ Python backend for the Smart Coffee Roaster: **WebSocket API**, **hardware contr
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Hardware bench test (separate API)
+
+For first power-on / wiring checks, use the **bench server** — not the roast API.
+
+| | Roast dashboard | Hardware bench |
+|--|-----------------|----------------|
+| **Run** | `python api/main.py` | `python api/hardware_test.py` |
+| **Port** | 8000 | 8001 |
+| **WebSocket** | `/ws/telemetry` | `/ws/bench` |
+| **Code** | `hardware/controller.py` | `hardware/test_bench.py` |
+
+Do **not** run both servers on the Pi at once (GPIO conflict).
+
+1. `python api/hardware_test.py`
+2. Open frontend `/hardware-test`
+3. **Start session** → test fan → read thermocouple → short heater pulses
+
 ## Quick start
 
 ```bash
@@ -152,13 +169,24 @@ On each roast:
 
 **JSON examples:** `examples/roast_data_formats.json`
 
+## Configuration
+
+Hardware and logging settings: **`config.py`** (GPIO, PID, safety limits, roast profiles).
+
+API host/port: **`api/main.py`** (unchanged).
+
+Optional env vars: `ROASTER_LOG_FOLDER`, `ROASTER_HARDWARE_MODE`.
+
 ## Project layout
 
 ```
 backend/
-├── api/main.py              # FastAPI WebSocket server
+├── config.py                # Hardware / logging configuration
+├── api/main.py              # Roast API (port 8000)
+├── api/hardware_test.py     # Bench API (port 8001)
 ├── hardware/
-│   ├── controller.py        # RoasterController (main orchestration)
+│   ├── controller.py        # RoasterController (roast orchestration)
+│   ├── test_bench.py        # HardwareTestBench (bench only)
 │   ├── thermocouple.py
 │   ├── heater.py
 │   ├── motor.py

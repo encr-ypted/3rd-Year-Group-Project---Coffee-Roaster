@@ -4,9 +4,11 @@ import asyncio
 
 from gpiozero import DigitalOutputDevice
 
+from config import HEATER_CONTROL_WINDOW_S, HEATER_GPIO
+
 
 class RoasterHeater:
-    def __init__(self, gpio=18, control_window_s=2.0):
+    def __init__(self, gpio=HEATER_GPIO, control_window_s=HEATER_CONTROL_WINDOW_S):
         self._relay = DigitalOutputDevice(gpio, active_high=True, initial_value=False)
         self._control_window_s = control_window_s
         self._output = 0.0
@@ -29,6 +31,11 @@ class RoasterHeater:
             await asyncio.sleep(window)
 
         return self._output
+
+    def force_on(self):
+        """Bench test: relay on continuously (bypass time-proportional window)."""
+        self._relay.on()
+        self._output = 100.0
 
     def stop(self):
         self._relay.off()

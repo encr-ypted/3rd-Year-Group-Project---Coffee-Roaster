@@ -1,13 +1,5 @@
-"""Roast profile target bean temperatures (°C)."""
+"""Roast profile targets — defined in config.py."""
 
-ROAST_PROFILES = {
-    "light": 196.0,
-    "medium": 210.0,
-    "medium-dark": 220.0,
-    "dark": 230.0,
-    "default": 200.0,
-}
+from config import ROAST_PROFILES, target_for_profile
 
-
-def target_for_profile(profile_id: str) -> float:
-    return ROAST_PROFILES.get(profile_id, ROAST_PROFILES["default"])
+__all__ = ["ROAST_PROFILES", "target_for_profile"]

@@ -4,7 +4,6 @@ const socket = ref(null);
 const isConnected = ref(false);
 const lastError = ref(null);
 
-// The current real-time state of the machine
 const liveData = ref({
     timestamp: 0,
     temp: 20.0,
@@ -12,25 +11,27 @@ const liveData = ref({
     ror: 0.0,
     heaterPwm: 0,
     fanPwm: 0,
-    state: "IDLE" // IDLE, PREHEAT, ROASTING, COOLING, ERROR
+    state: "IDLE"
 });
 
-// Array to feed into Chart.js / vue-chartjs
 const roastDataPoints = ref([]);
+
+const sendJson = (payload) => {
+    if (!socket.value || socket.value.readyState !== WebSocket.OPEN) return false;
+    socket.value.send(JSON.stringify(payload));
+    return true;
+};
 
 export const useCoffeeRoaster = () => {
     const connect = () => {
         if (socket.value && socket.value.readyState === WebSocket.OPEN) return;
 
         const wsUrl = "ws://127.0.0.1:8000/ws/telemetry";
-        console.log(`Connecting to ${wsUrl}`);
-
         socket.value = new WebSocket(wsUrl);
 
         socket.value.onopen = () => {
             isConnected.value = true;
             lastError.value = null;
-            console.log('WebSocket connection established.');
             getSystemState();
         };
 
@@ -49,16 +50,13 @@ export const useCoffeeRoaster = () => {
                         state: message.state
                     };
 
-                    // Only record points if we are actually roasting or cooling
                     if (message.state !== "IDLE") {
-                        roastDataPoints.value.push({...liveData.value});
+                        roastDataPoints.value.push({ ...liveData.value });
                     }
                 } else if (message.type === "system_state") {
-                    console.log("Hardware Synced:", message);
                     liveData.value.state = message.state;
                 } else if (message.type === "error") {
                     lastError.value = message.msg;
-                    console.error("Roaster Error:", message.msg);
                 }
             } catch (e) {
                 console.error('Error parsing WebSocket message:', e);
@@ -68,47 +66,36 @@ export const useCoffeeRoaster = () => {
         socket.value.onclose = () => {
             isConnected.value = false;
             socket.value = null;
-            setTimeout(connect, 3000); // Auto-reconnect every 3 seconds
+            setTimeout(connect, 3000);
         };
 
-        socket.value.onerror = (error) => {
+        socket.value.onerror = () => {
             isConnected.value = false;
-            console.error('WebSocket error:', error);
         };
     };
 
     const disconnect = () => {
-        if (socket.value) {
-            socket.value.close();
-        }
+        socket.value?.close();
     };
-
-    // --- CONTROL ENDPOINTS ---
 
     const startRoast = (profileId) => {
         if (!isConnected.value) return;
-        roastDataPoints.value =[]; // Clear chart history
-        socket.value?.send(JSON.stringify({
-            action: 'START_ROAST',
-            profile_id: profileId
-        }));
+        roastDataPoints.value = [];
+        sendJson({ action: 'START_ROAST', profile_id: profileId });
     };
 
-    // Normal Stop: Turns off heater, leaves fan ON to cool beans safely
     const stopRoast = () => {
         if (!isConnected.value) return;
-        socket.value?.send(JSON.stringify({ action: 'STOP_ROAST' }));
+        sendJson({ action: 'STOP_ROAST' });
     };
 
-    // Emergency Stop: Kills EVERYTHING immediately (Safety Requirement)
     const emergencyStop = () => {
         if (!isConnected.value) return;
-        socket.value?.send(JSON.stringify({ action: 'E_STOP' }));
+        sendJson({ action: 'E_STOP' });
     };
 
     const getSystemState = () => {
-        if (!isConnected.value) return;
-        socket.value?.send(JSON.stringify({ action: 'GET_STATE' }));
+        sendJson({ action: 'GET_STATE' });
     };
 
     return {

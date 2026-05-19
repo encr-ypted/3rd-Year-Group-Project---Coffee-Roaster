@@ -11,8 +11,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from hardware.controller import RoasterController
 
-
-
 hw_manager = RoasterController()
 
 active_connections: list[WebSocket] = []

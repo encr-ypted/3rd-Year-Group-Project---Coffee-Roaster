@@ -1,8 +1,25 @@
 import time
 
+from config import (
+    PID_INTEGRAL_LIMIT,
+    PID_KD,
+    PID_KI,
+    PID_KP,
+    PID_OUT_MAX,
+    PID_OUT_MIN,
+)
+
+
 class PIDController:
     def __init__(
-        self, kp = 4.0, ki = 0.05, kd = 1.5, out_min = 0.0, out_max = 100.0, integral_limit = 500.0):
+        self,
+        kp=PID_KP,
+        ki=PID_KI,
+        kd=PID_KD,
+        out_min=PID_OUT_MIN,
+        out_max=PID_OUT_MAX,
+        integral_limit=PID_INTEGRAL_LIMIT,
+    ):
         self.kp = kp
         self.ki = ki
         self.kd = kd
@@ -35,10 +52,8 @@ class PIDController:
             min(self.integral_limit, self._integral),
         )
 
-        derivative = ((error - self._previous_error) / dt)
-
+        derivative = (error - self._previous_error) / dt
         i = self.ki * self._integral
-
         d = self.kd * derivative
 
         self._previous_error = error

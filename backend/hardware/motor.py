@@ -1,28 +1,28 @@
-"""L298N fan motor driver with PWM speed control."""
+"""Fan motor via low-side PWM (MOSFET/BJT driver, active_high=False)."""
 
-from gpiozero import Motor, PWMOutputDevice
+from gpiozero import PWMOutputDevice
 
-from config import (
-    FAN_DEFAULT_SPEED,
-    FAN_ENA_GPIO,
-    FAN_IN1_GPIO,
-    FAN_IN2_GPIO,
-    FAN_PWM_FREQUENCY_HZ,
-)
+from config import FAN_DEFAULT_SPEED, FAN_PWM_FREQUENCY_HZ, FAN_PWM_GPIO
 
 
 class RoasterMotor:
-    """Cooling fan via L298N (IN1/IN2 direction, ENA PWM)."""
+    """
+    Cooling fan driven by a single PWM pin into a low-side switch.
+
+    active_high=False: PWM value 1.0 = pin LOW = switch ON = fan runs.
+    """
 
     def __init__(
         self,
-        in1=FAN_IN1_GPIO,
-        in2=FAN_IN2_GPIO,
-        ena=FAN_ENA_GPIO,
+        pwm_pin=FAN_PWM_GPIO,
         pwm_frequency=FAN_PWM_FREQUENCY_HZ,
     ):
-        self._motor = Motor(forward=in1, backward=in2)
-        self._enable = PWMOutputDevice(ena, frequency=pwm_frequency)
+        self._pwm = PWMOutputDevice(
+            pwm_pin,
+            frequency=pwm_frequency,
+            active_high=False,
+            initial_value=0.0,
+        )
         self._speed = 0.0
         self._default_speed = FAN_DEFAULT_SPEED
 
@@ -31,8 +31,7 @@ class RoasterMotor:
             speed = self._default_speed
         speed = max(0.0, min(1.0, speed))
         try:
-            self._enable.value = speed
-            self._motor.forward()
+            self._pwm.value = speed
             self._speed = speed
             return int(speed * 100)
         except Exception:
@@ -40,8 +39,7 @@ class RoasterMotor:
             return 0
 
     def stop(self):
-        self._motor.stop()
-        self._enable.value = 0
+        self._pwm.value = 0.0
         self._speed = 0.0
 
     def read_speed(self):

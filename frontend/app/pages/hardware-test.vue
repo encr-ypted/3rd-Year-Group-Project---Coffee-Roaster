@@ -137,7 +137,7 @@ const statusLabel = computed(() => {
       </section>
 
       <section class="rounded-2xl border border-white/[0.06] bg-[#1a1714] p-5 space-y-4">
-        <h2 class="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Fan (L298N)</h2>
+        <h2 class="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Fan (low-side PWM)</h2>
         <label class="block text-xs text-zinc-500">
           Speed {{ fanPercent }}%
           <input v-model.number="fanPercent" type="range" min="0" max="100" class="w-full mt-2 accent-sky-500" :disabled="!sessionActive">

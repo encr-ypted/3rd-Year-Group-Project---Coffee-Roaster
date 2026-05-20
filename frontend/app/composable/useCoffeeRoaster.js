@@ -26,7 +26,7 @@ export const useCoffeeRoaster = () => {
     const connect = () => {
         if (socket.value && socket.value.readyState === WebSocket.OPEN) return;
 
-        const wsUrl = "ws://127.0.0.1:8000/ws/telemetry";
+        const wsUrl = "ws://10.64.26.141:8000/ws/telemetry";
         socket.value = new WebSocket(wsUrl);
 
         socket.value.onopen = () => {

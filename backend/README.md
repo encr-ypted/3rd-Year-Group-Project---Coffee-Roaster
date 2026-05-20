@@ -26,7 +26,7 @@ Python backend for the Smart Coffee Roaster: **WebSocket API**, **hardware contr
 │  Hardware modules                                           │
 │  • thermocouple.py — temperature (EMA filtered)             │
 │  • heater.py — relay, time-proportional power               │
-│  • motor.py — fan (L298N PWM)                               │
+│  • motor.py — fan (low-side PWM, GPIO 12)                   │
 │  • pid.py — PID loop                                        │
 │  • roast_logger.py — CSV + JSON metadata                    │
 └─────────────────────────────────────────────────────────────┘
@@ -153,7 +153,7 @@ On fault:
 |------|-------|------|
 | `thermocouple.py` | `RoasterThermocouple` | MAX31855, EMA smoothing |
 | `heater.py` | `RoasterHeater` | SSR relay, `apply_output(percent)` |
-| `motor.py` | `RoasterMotor` | L298N fan PWM |
+| `motor.py` | `RoasterMotor` | Low-side PWM fan (MOSFET/BJT on GPIO 12) |
 | `pid.py` | `PIDController` | P/I/D → 0–100% |
 | `roast_logger.py` | `RoastDataLogger` | CSV + `_meta.json` |
 

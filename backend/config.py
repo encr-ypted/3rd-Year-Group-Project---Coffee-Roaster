@@ -19,13 +19,11 @@ COOL_DOWN_TEMP_C = 50.0
 
 # GPIO (BCM pins for gpiozero)
 HEATER_GPIO = 18
-FAN_IN1_GPIO = 23
-FAN_IN2_GPIO = 24
-FAN_ENA_GPIO = 12
+FAN_PWM_GPIO = 12
 FAN_PWM_FREQUENCY_HZ = 1000
 THERMOCOUPLE_CS_GPIO = 8
 
-# Fan
+# Fan (low-side PWM — active_high=False in RoasterMotor)
 FAN_DEFAULT_SPEED = 1.0
 
 # Thermocouple (MAX31855)

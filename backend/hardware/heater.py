@@ -12,9 +12,13 @@ class RoasterHeater:
         self._relay = DigitalOutputDevice(gpio, active_high=True, initial_value=False)
         self._control_window_s = control_window_s
         self._output = 0.0
+        self._constant_on = False
 
     async def apply_output(self, percent=0.0):
         percent = max(0.0, min(100.0, percent))
+        if self._constant_on:
+            self._output = round(percent, 1)
+            return self._output
         self._output = round(percent, 1)
 
         window = self._control_window_s
@@ -33,13 +37,19 @@ class RoasterHeater:
         return self._output
 
     def force_on(self):
-        """Bench test: relay on continuously (bypass time-proportional window)."""
+        """Bench test: relay closed continuously (no time-proportional cycling)."""
+        self._constant_on = True
         self._relay.on()
         self._output = 100.0
 
     def stop(self):
+        self._constant_on = False
         self._relay.off()
         self._output = 0.0
+
+    @property
+    def is_constant_on(self) -> bool:
+        return self._constant_on
 
     def read_output(self):
         return self._output

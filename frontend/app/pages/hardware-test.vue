@@ -5,6 +5,7 @@ const {
   connect,
   disconnect,
   isConnected,
+  isStreaming,
   lastError,
   lastResult,
   sessionActive,
@@ -12,7 +13,6 @@ const {
   startSession,
   stopSession,
   emergencyStop,
-  readSensors,
   setFan,
   stopFan,
   heaterOn,
@@ -107,32 +107,48 @@ const statusLabel = computed(() => {
       </section>
 
       <section class="rounded-2xl border border-white/[0.06] bg-[#1a1714] p-5 space-y-4">
-        <h2 class="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Thermocouple</h2>
+        <div class="flex items-center justify-between gap-3">
+          <h2 class="text-sm font-semibold text-zinc-300 uppercase tracking-wider">Thermocouple</h2>
+          <span
+            v-if="isConnected"
+            class="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-full"
+            :class="isStreaming ? 'text-emerald-400 bg-emerald-500/10' : 'text-zinc-500 bg-zinc-800'"
+          >
+            <span
+              class="w-1.5 h-1.5 rounded-full"
+              :class="isStreaming ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-500'"
+            />
+            {{ isStreaming ? 'Live ~2 Hz' : 'Waiting…' }}
+          </span>
+        </div>
+        <p class="text-xs text-zinc-500">
+          Updates automatically while connected to the bench server.
+        </p>
+        <p
+          v-if="live.sensorFault"
+          class="text-xs text-amber-300 rounded-lg bg-amber-500/10 border border-amber-500/25 px-3 py-2"
+        >
+          <strong>Sensor fault:</strong> {{ live.sensorFault }}.
+          Check probe wiring (TC+ / TC− not shorted to ground or VCC).
+        </p>
         <div class="grid grid-cols-2 gap-4">
           <div>
             <p class="text-xs text-zinc-500 mb-1">Filtered</p>
             <p class="text-3xl font-bold text-white tabular-nums">
-              {{ live.temp != null ? live.temp.toFixed(1) : '—' }}
+              {{ live.temp != null ? Number(live.temp).toFixed(1) : '—' }}
               <span class="text-lg text-zinc-500 font-normal">°C</span>
             </p>
           </div>
           <div>
-            <p class="text-xs text-zinc-500 mb-1">Outputs</p>
-            <p class="text-sm text-zinc-400 mt-2">
-              Fan {{ live.fanPwm }}% · Heater {{ live.heaterPwm }}%
+            <p class="text-xs text-zinc-500 mb-1">Raw</p>
+            <p class="text-3xl font-bold text-zinc-300 tabular-nums">
+              {{ live.tempRaw != null ? Number(live.tempRaw).toFixed(1) : '—' }}
+              <span class="text-lg text-zinc-500 font-normal">°C</span>
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          class="px-4 py-2 rounded-xl text-sm border border-white/10 hover:bg-white/5 disabled:opacity-40"
-          :disabled="!isConnected"
-          @click="readSensors"
-        >
-          Read sensors now
-        </button>
-        <p v-if="live.tempRaw != null" class="text-xs text-zinc-600 font-mono">
-          Raw: {{ live.tempRaw }} °C
+        <p class="text-xs text-zinc-600">
+          Fan {{ live.fanPwm }}% · Heater {{ live.heaterPwm }}%
         </p>
       </section>
 

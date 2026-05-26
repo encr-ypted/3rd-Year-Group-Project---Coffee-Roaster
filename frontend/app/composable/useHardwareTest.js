@@ -1,19 +1,42 @@
 import { ref } from 'vue'
 
-const BENCH_WS_URL = 'ws://10.64.26.141:8001/ws/bench'
+const BENCH_WS_URL = 'ws://10.115.50.98:8001/ws/bench'
 
 const socket = ref(null)
 const isConnected = ref(false)
 const lastError = ref(null)
 const lastResult = ref(null)
 const sessionActive = ref(false)
+const lastTelemetryAt = ref(null)
 
 const live = ref({
   temp: null,
   tempRaw: null,
+  sensorFault: null,
   heaterPwm: 0,
   fanPwm: 0,
 })
+
+let reconnectTimer = null
+
+const applyTelemetry = (message) => {
+  live.value = {
+    temp: message.temp ?? live.value.temp,
+    tempRaw: message.temp_raw ?? message.tempRaw ?? live.value.tempRaw,
+    sensorFault:
+      message.sensor_fault !== undefined
+        ? message.sensor_fault
+        : message.sensorFault !== undefined
+          ? message.sensorFault
+          : live.value.sensorFault,
+    heaterPwm: message.heater_pwm ?? message.heaterPwm ?? live.value.heaterPwm,
+    fanPwm: message.fan_pwm ?? message.fanPwm ?? live.value.fanPwm,
+  }
+  if (message.session_active !== undefined) {
+    sessionActive.value = message.session_active
+  }
+  lastTelemetryAt.value = Date.now()
+}
 
 const sendJson = (payload) => {
   if (!socket.value || socket.value.readyState !== WebSocket.OPEN) return false
@@ -22,8 +45,18 @@ const sendJson = (payload) => {
 }
 
 export const useHardwareTest = () => {
+  const isStreaming = computed(() => {
+    if (!isConnected.value || !lastTelemetryAt.value) return false
+    return Date.now() - lastTelemetryAt.value < 2500
+  })
+
   const connect = () => {
     if (socket.value?.readyState === WebSocket.OPEN) return
+
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
 
     socket.value = new WebSocket(BENCH_WS_URL)
 
@@ -37,29 +70,22 @@ export const useHardwareTest = () => {
         const message = JSON.parse(event.data)
 
         if (message.type === 'bench_telemetry') {
-          live.value = {
-            temp: message.temp,
-            tempRaw: message.temp_raw,
-            heaterPwm: message.heater_pwm,
-            fanPwm: message.fan_pwm,
-          }
-          sessionActive.value = message.session_active
+          applyTelemetry(message)
         } else if (message.type === 'bench_result') {
           lastResult.value = message
+          if (message.temp !== undefined || message.temp_raw !== undefined) {
+            applyTelemetry(message)
+          } else if (message.sensors) {
+            applyTelemetry({
+              temp: message.sensors.temp_c,
+              temp_raw: message.sensors.temp_raw_c,
+              heater_pwm: message.sensors.heater_pwm,
+              fan_pwm: message.sensors.fan_pwm,
+              session_active: message.sensors.session_active,
+            })
+          }
           if (message.session_active !== undefined) {
             sessionActive.value = message.session_active
-          }
-          if (message.sensors) {
-            live.value.temp = message.sensors.temp_c
-            live.value.tempRaw = message.sensors.temp_raw_c
-            live.value.heaterPwm = message.sensors.heater_pwm
-            live.value.fanPwm = message.sensors.fan_pwm
-          }
-          if (message.heater_pwm !== undefined) {
-            live.value.heaterPwm = message.heater_pwm
-          }
-          if (message.fan_pwm !== undefined) {
-            live.value.fanPwm = message.fan_pwm
           }
         } else if (message.type === 'error') {
           lastError.value = message.msg
@@ -74,16 +100,25 @@ export const useHardwareTest = () => {
     socket.value.onclose = () => {
       isConnected.value = false
       sessionActive.value = false
+      lastTelemetryAt.value = null
       socket.value = null
+      reconnectTimer = setTimeout(connect, 3000)
     }
 
     socket.value.onerror = () => {
       isConnected.value = false
-      lastError.value = 'Bench server not reachable (run: python api/hardware_test.py on port 8001)'
+      lastError.value =
+        'Bench server not reachable (run: python api/hardware_test.py on port 8001)'
     }
   }
 
-  const disconnect = () => socket.value?.close()
+  const disconnect = () => {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer)
+      reconnectTimer = null
+    }
+    socket.value?.close()
+  }
 
   const send = (action, extra = {}) => {
     if (!sendJson({ action, ...extra })) {
@@ -95,8 +130,10 @@ export const useHardwareTest = () => {
     connect,
     disconnect,
     isConnected,
+    isStreaming,
     lastError,
     lastResult,
+    lastTelemetryAt,
     sessionActive,
     live,
     startSession: () => send('SESSION_START'),

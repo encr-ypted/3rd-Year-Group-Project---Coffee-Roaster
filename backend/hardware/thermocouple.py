@@ -23,21 +23,30 @@ class RoasterThermocouple:
         self.sensor = adafruit_max31855.MAX31855(self.spi, self.cs)
         self.alpha = alpha
         self.filtered_temp = None
+        self.last_fault: str | None = None
         time.sleep(THERMOCOUPLE_STARTUP_DELAY_S)
 
-    def read_raw_temperature(self):
-        return self.sensor.temperature
-
-    def read_filtered_temperature(self):
+    def read_temperatures(self) -> tuple[float | None, float | None, str | None]:
+        """Single SPI read — (raw °C, filtered °C, fault message)."""
         try:
             raw = self.sensor.temperature
+            self.last_fault = None
+        except RuntimeError as exc:
+            self.last_fault = str(exc)
+            return None, None, self.last_fault
 
-            if self.filtered_temp is None:
-                self.filtered_temp = raw
-            else:
-                self.filtered_temp = (
-                    self.alpha * raw + (1 - self.alpha) * self.filtered_temp
-                )
-            return round(self.filtered_temp, 2)
-        except RuntimeError:
-            return None
+        if self.filtered_temp is None:
+            self.filtered_temp = raw
+        else:
+            self.filtered_temp = (
+                self.alpha * raw + (1 - self.alpha) * self.filtered_temp
+            )
+        return raw, round(self.filtered_temp, 2), None
+
+    def read_raw_temperature(self):
+        raw, _, _ = self.read_temperatures()
+        return raw
+
+    def read_filtered_temperature(self):
+        _, filtered, _ = self.read_temperatures()
+        return filtered

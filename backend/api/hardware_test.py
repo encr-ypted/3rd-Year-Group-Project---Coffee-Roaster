@@ -71,7 +71,17 @@ def _handle_action(action: str, data: dict) -> dict:
         bench.emergency_stop()
         return {"ok": True, "session_active": False}
     if action == "READ_SENSORS":
-        return {"ok": True, "sensors": bench.read_sensors()}
+        sensors = bench.read_sensors()
+        t = bench.telemetry_payload()
+        return {
+            "ok": True,
+            "sensors": sensors,
+            "temp": t["temp"],
+            "temp_raw": t["temp_raw"],
+            "heater_pwm": t["heater_pwm"],
+            "fan_pwm": t["fan_pwm"],
+            "session_active": t["session_active"],
+        }
     if action == "FAN_SET":
         pwm = bench.set_fan(float(data.get("percent", 0)))
         return {"ok": True, "fan_pwm": pwm}
@@ -100,6 +110,11 @@ async def bench_status():
     return {"ok": True, **bench.read_sensors()}
 
 
+async def _send_telemetry(websocket: WebSocket) -> None:
+    bench.read_sensors()
+    await websocket.send_json(bench.telemetry_payload())
+
+
 @app.websocket("/ws/bench")
 async def bench_websocket(websocket: WebSocket):
     await websocket.accept()
@@ -108,9 +123,10 @@ async def bench_websocket(websocket: WebSocket):
         await websocket.send_json(
             {
                 "type": "bench_ready",
-                "msg": "Hardware bench API — start a session before controlling outputs",
+                "msg": "Live temperature stream active (~2 Hz). Start a session to control outputs.",
             }
         )
+        await _send_telemetry(websocket)
         while True:
             data = await websocket.receive_json()
             action = data.get("action", "")

@@ -24,6 +24,7 @@ class HardwareTestBench:
 
         self.temp_c = None
         self.temp_raw_c = None
+        self.sensor_fault: str | None = None
         self.heater_pwm = 0
         self.fan_pwm = 0
 
@@ -65,11 +66,27 @@ class HardwareTestBench:
         self.stop_session()
 
     def read_sensors(self) -> dict:
-        self.temp_raw_c = self._tc.read_raw_temperature()
-        self.temp_c = self._tc.read_filtered_temperature()
+        raw, filtered, fault = self._tc.read_temperatures()
+        self.temp_raw_c = raw
+        self.temp_c = filtered
+        self.sensor_fault = fault
         return {
             "temp_raw_c": self.temp_raw_c,
             "temp_c": self.temp_c,
+            "sensor_fault": fault,
+            "heater_pwm": self.heater_pwm,
+            "fan_pwm": self.fan_pwm,
+            "session_active": self.session_active,
+        }
+
+    def telemetry_payload(self) -> dict:
+        """WebSocket message for live temperature / output streaming."""
+        raw = self.temp_raw_c
+        return {
+            "type": "bench_telemetry",
+            "temp": round(self.temp_c, 1) if self.temp_c is not None else None,
+            "temp_raw": round(raw, 2) if raw is not None else None,
+            "sensor_fault": self.sensor_fault,
             "heater_pwm": self.heater_pwm,
             "fan_pwm": self.fan_pwm,
             "session_active": self.session_active,
@@ -121,45 +138,45 @@ class HardwareTestBench:
 
     async def _telemetry_loop(self) -> None:
         while self.is_running:
-            sensors = self.read_sensors()
+            try:
+                sensors = self.read_sensors()
+                fault = sensors.get("sensor_fault")
 
-            if sensors["temp_c"] is None:
-                self._heater.stop()
-                self._fan.stop()
-                self.heater_pwm = 0
-                self.fan_pwm = 0
+                if sensors["temp_c"] is None:
+                    self._heater.stop()
+                    self._fan.stop()
+                    self.heater_pwm = 0
+                    self.fan_pwm = 0
+                    await self.message_queue.put(self.telemetry_payload())
+                    if fault:
+                        await self.message_queue.put(
+                            {
+                                "type": "error",
+                                "msg": f"Thermocouple: {fault} — outputs off",
+                            }
+                        )
+                    await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
+                    continue
+
+                if (
+                    sensors["temp_c"] > cfg.MAX_SAFE_TEMP_C
+                    and self.session_active
+                ):
+                    self.emergency_stop()
+                    await self.message_queue.put(
+                        {
+                            "type": "error",
+                            "msg": (
+                                f"Over-temp ({sensors['temp_c']:.1f}°C) — "
+                                "session stopped"
+                            ),
+                        }
+                    )
+
+                await self.message_queue.put(self.telemetry_payload())
+                await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
+            except Exception as exc:
                 await self.message_queue.put(
-                    {
-                        "type": "error",
-                        "msg": "Thermocouple fault — outputs off",
-                    }
+                    {"type": "error", "msg": f"Telemetry error: {exc}"}
                 )
                 await asyncio.sleep(1)
-                continue
-
-            if (
-                sensors["temp_c"] > cfg.MAX_SAFE_TEMP_C
-                and self.session_active
-            ):
-                self.emergency_stop()
-                await self.message_queue.put(
-                    {
-                        "type": "error",
-                        "msg": (
-                            f"Over-temp ({sensors['temp_c']:.1f}°C) — "
-                            "session stopped"
-                        ),
-                    }
-                )
-
-            await self.message_queue.put(
-                {
-                    "type": "bench_telemetry",
-                    "temp": round(sensors["temp_c"], 1),
-                    "temp_raw": sensors["temp_raw_c"],
-                    "heater_pwm": self.heater_pwm,
-                    "fan_pwm": self.fan_pwm,
-                    "session_active": self.session_active,
-                }
-            )
-            await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)

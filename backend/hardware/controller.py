@@ -106,8 +106,7 @@ class RoasterController:
 
     async def _telemetry_loop(self) -> None:
         while self.is_running:
-            temp_raw = self._tc.read_raw_temperature()
-            temp = self._tc.read_filtered_temperature()
+            temp_raw, temp, fault = self._tc.read_temperatures()
 
             if temp is None:
                 self._heater.stop()
@@ -116,10 +115,11 @@ class RoasterController:
                 self.state = "ERROR"
                 if self._logger.is_active:
                     self._logger.end_session("error", self.current_temp)
+                detail = fault or "unknown fault"
                 await self.message_queue.put(
                     {
                         "type": "error",
-                        "msg": "Thermocouple fault — emergency shutdown",
+                        "msg": f"Thermocouple: {detail} — emergency shutdown",
                     }
                 )
                 await asyncio.sleep(1)

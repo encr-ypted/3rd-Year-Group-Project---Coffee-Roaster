@@ -24,7 +24,7 @@ Python backend for the Smart Coffee Roaster: **WebSocket API**, **hardware contr
                             ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Hardware modules                                           │
-│  • thermocouple.py — temperature (EMA filtered)             │
+│  • thermocouple.py — temperature (MAX31855 raw)             │
 │  • heater.py — relay, time-proportional power               │
 │  • motor.py — fan (low-side PWM, GPIO 12)                   │
 │  • pid.py — PID loop                                        │
@@ -47,7 +47,7 @@ Do **not** run both servers on the Pi at once (GPIO conflict).
 
 1. `python api/hardware_test.py`
 2. Open frontend `/hardware-test`
-3. **Start session** → test fan → read thermocouple → short heater pulses
+3. Set target → **Heat to target** (`HEAT_TO_TARGET`) — full power then PID. Fan: start session first.
 
 ## Quick start
 
@@ -127,7 +127,7 @@ On fault:
 
 ### 1. Telemetry loop (~2 Hz)
 
-- Read thermocouple (raw + filtered)
+- Read thermocouple (raw)
 - Update `current_temp`, RoR, state
 - Push WebSocket JSON
 - Log samples to CSV (when session active)
@@ -194,7 +194,6 @@ backend/
 │   ├── heater.py
 │   ├── motor.py
 │   ├── pid.py
-│   ├── profiles.py
 │   └── roast_logger.py
 ├── examples/roast_data_formats.json
 ├── requirements.txt
@@ -206,6 +205,31 @@ backend/
 - **Over-temp:** >250 °C → `ERROR`, heater off
 - **Overshoot:** >target + 15 °C → heater 0% for that window
 - **E-STOP:** immediate relay off (`heater.stop()`)
+
+## Troubleshooting
+
+### `OSError: /dev/spidev0.0 does not exist`
+
+The MAX31855 uses **SPI**. The kernel device is missing until SPI is turned on:
+
+```bash
+sudo raspi-config   # Interface Options → SPI → Enable
+sudo reboot
+ls /dev/spidev*     # should list spidev0.0 and spidev0.1
+```
+
+If SPI is enabled but permission errors appear:
+
+```bash
+sudo usermod -aG spi,gpio $USER
+# log out and back in (or reboot)
+```
+
+Wiring (BCM): CS → GPIO **8** (see `THERMOCOUPLE_CS_GPIO` in `config.py`). SCLK/MOSI/MISO use the Pi’s hardware SPI pins (11, 10, 9 on older docs — your `config.py` notes DO on 9).
+
+### `RuntimeError: short circuit to ground` (thermocouple)
+
+Hardware fault from the MAX31855: probe wires shorted to ground, loose terminals, or damaged cable. Fix wiring before enabling the heater.
 
 ## Known limitations
 

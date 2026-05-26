@@ -35,6 +35,35 @@ class PIDController:
         self._previous_error = 0.0
         self.previous_time = None
 
+    def as_dict(self) -> dict:
+        return {
+            "kp": round(self.kp, 4),
+            "ki": round(self.ki, 4),
+            "kd": round(self.kd, 4),
+        }
+
+    @classmethod
+    def default_gains(cls) -> dict:
+        return {"kp": PID_KP, "ki": PID_KI, "kd": PID_KD}
+
+    def set_gains(
+        self,
+        kp: float | None = None,
+        ki: float | None = None,
+        kd: float | None = None,
+        *,
+        reset: bool = False,
+    ) -> dict:
+        if kp is not None:
+            self.kp = max(0.0, min(float(kp), 50.0))
+        if ki is not None:
+            self.ki = max(0.0, min(float(ki), 5.0))
+        if kd is not None:
+            self.kd = max(0.0, min(float(kd), 20.0))
+        if reset:
+            self.reset()
+        return self.as_dict()
+
     def calculate(self, setpoint, measurement):
         current_time = time.time()
         error = setpoint - measurement

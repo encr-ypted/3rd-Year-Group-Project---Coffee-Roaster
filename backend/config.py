@@ -14,26 +14,31 @@ HEATER_CONTROL_WINDOW_S = 2.0
 # Safety & state machine (°C)
 MAX_SAFE_TEMP_C = 250.0
 OVERSHOOT_CUTOFF_C = 15.0
+# Bench: relay full-on until temp is within this many °C of target
+BENCH_FULL_POWER_BAND_C = 15.0
 PREHEAT_THRESHOLD_C = 150.0
+
 COOL_DOWN_TEMP_C = 50.0
 
 # GPIO (BCM pins for gpiozero)
 HEATER_GPIO = 18
 FAN_PWM_GPIO = 12
 FAN_PWM_FREQUENCY_HZ = 1000
+
 THERMOCOUPLE_CS_GPIO = 8
+THERMOCOUPLE_SCLK_GPIO = 11
+THERMOCOUPLE_DO_GPIO = 9
 
 # Fan (low-side PWM — active_high=False in RoasterMotor)
 FAN_DEFAULT_SPEED = 1.0
 
-# Thermocouple (MAX31855)
-THERMOCOUPLE_EMA_ALPHA = 0.2
+# Thermocouple (MAX31855) — raw reading only (no software smoothing)
 THERMOCOUPLE_STARTUP_DELAY_S = 0.5
 
 # PID
-PID_KP = 4.0
+PID_KP = 2.6
 PID_KI = 0.05
-PID_KD = 1.5
+PID_KD = 0
 PID_OUT_MIN = 0.0
 PID_OUT_MAX = 100.0
 PID_INTEGRAL_LIMIT = 500.0

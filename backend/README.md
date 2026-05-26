@@ -173,6 +173,9 @@ On each roast:
 
 Hardware and logging settings: **`config.py`** (GPIO, PID, safety limits, roast profiles).
 
+LCD smoke test and realtime dashboard: **`docs/lcd_st7796_test.md`**,
+**`hardware/lcd_st7796_test.py`**, and **`hardware/lcd_dashboard.py`**.
+
 API host/port: **`api/main.py`** (unchanged).
 
 Optional env vars: `ROASTER_LOG_FOLDER`, `ROASTER_HARDWARE_MODE`.

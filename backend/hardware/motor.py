@@ -1,17 +1,9 @@
-"""Fan motor via low-side PWM (MOSFET/BJT driver, active_high=False)."""
-
 from gpiozero import PWMOutputDevice
 
 from config import FAN_DEFAULT_SPEED, FAN_PWM_FREQUENCY_HZ, FAN_PWM_GPIO
 
 
 class RoasterMotor:
-    """
-    Cooling fan driven by a single PWM pin into a low-side switch.
-
-    active_high=False: PWM value 1.0 = pin LOW = switch ON = fan runs.
-    """
-
     def __init__(
         self,
         pwm_pin=FAN_PWM_GPIO,

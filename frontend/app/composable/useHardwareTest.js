@@ -1,376 +1,121 @@
 import { ref } from 'vue'
 
-
-
-const BENCH_WS_URL = 'ws://10.138.72.98:8001/ws/bench'
-
-
+const BENCH_WS_URL = 'ws://10.115.50.98:8001/ws/bench'
 
 const socket = ref(null)
-
-const isConnected = ref(false)
-
-const lastError = ref(null)
-
-const lastResult = ref(null)
-
-const sessionActive = ref(false)
-
+const connected = ref(false)
+const connectError = ref(null)
+const lastAck = ref(null)
 const lastTelemetryAt = ref(null)
 
-
-
 const live = ref({
-
   temp: null,
-
-  sensorFault: null,
-
-  heaterPwm: 0,
-
-  heaterMode: 'off',
-
-  pidActive: false,
-
-  pidTarget: null,
-
-  pidKp: null,
-
-  pidKi: null,
-
-  pidKd: null,
-
   fanPwm: 0,
-
+  heaterPwm: 0,
+  heating: false,
+  heaterHalted: false,
+  target: null,
+  pidKp: 2.6,
+  pidKi: 0.05,
+  pidKd: 0,
 })
-
-
 
 let reconnectTimer = null
 
-
-
-const applyTelemetry = (message) => {
-
-  live.value = {
-
-    temp: message.temp ?? live.value.temp,
-
-    sensorFault:
-
-      message.sensor_fault !== undefined
-
-        ? message.sensor_fault
-
-        : message.sensorFault !== undefined
-
-          ? message.sensorFault
-
-          : live.value.sensorFault,
-
-    heaterPwm: message.heater_pwm ?? message.heaterPwm ?? live.value.heaterPwm,
-
-    heaterMode:
-
-      message.heater_mode ?? message.heaterMode ?? live.value.heaterMode,
-
-    pidActive:
-
-      message.pid_active ?? message.pidActive ?? live.value.pidActive,
-
-    pidTarget:
-
-      message.pid_target !== undefined
-
-        ? message.pid_target
-
-        : message.pidTarget !== undefined
-
-          ? message.pidTarget
-
-          : live.value.pidTarget,
-
-    pidKp:
-      message.pid_kp ?? message.kp ?? live.value.pidKp,
-
-    pidKi:
-      message.pid_ki ?? message.ki ?? live.value.pidKi,
-
-    pidKd:
-      message.pid_kd ?? message.kd ?? live.value.pidKd,
-
-    fanPwm: message.fan_pwm ?? message.fanPwm ?? live.value.fanPwm,
-
-  }
-
-  if (message.session_active !== undefined) {
-
-    sessionActive.value = message.session_active
-
-  }
-
+function applySnapshot(msg) {
+  if (msg.temp !== undefined) live.value.temp = msg.temp
+  if (msg.fan_pwm !== undefined) live.value.fanPwm = msg.fan_pwm
+  if (msg.heater_pwm !== undefined) live.value.heaterPwm = msg.heater_pwm
+  if (msg.heating !== undefined) live.value.heating = msg.heating
+  if (msg.heater_halted !== undefined) live.value.heaterHalted = msg.heater_halted
+  if (msg.target !== undefined) live.value.target = msg.target
+  if (msg.pid_kp !== undefined) live.value.pidKp = msg.pid_kp
+  if (msg.pid_ki !== undefined) live.value.pidKi = msg.pid_ki
+  if (msg.pid_kd !== undefined) live.value.pidKd = msg.pid_kd
   lastTelemetryAt.value = Date.now()
-
 }
 
-
-
-const sendJson = (payload) => {
-
-  if (!socket.value || socket.value.readyState !== WebSocket.OPEN) return false
-
-  socket.value.send(JSON.stringify(payload))
-
-  return true
-
-}
-
-
-
-export const useHardwareTest = () => {
-
-  const isStreaming = computed(() => {
-
-    if (!isConnected.value || !lastTelemetryAt.value) return false
-
+export function useHardwareTest() {
+  const streaming = computed(() => {
+    if (!connected.value || !lastTelemetryAt.value) return false
     return Date.now() - lastTelemetryAt.value < 2500
-
   })
 
-
-
-  const connect = () => {
-
+  function connect() {
     if (socket.value?.readyState === WebSocket.OPEN) return
-
-
-
     if (reconnectTimer) {
-
       clearTimeout(reconnectTimer)
-
       reconnectTimer = null
-
     }
-
-
 
     socket.value = new WebSocket(BENCH_WS_URL)
 
-
-
     socket.value.onopen = () => {
-
-      isConnected.value = true
-
-      lastError.value = null
-
+      connected.value = true
+      connectError.value = null
     }
-
-
 
     socket.value.onmessage = (event) => {
-
       try {
-
-        const message = JSON.parse(event.data)
-
-
-
-        if (message.type === 'bench_telemetry') {
-
-          applyTelemetry(message)
-
-        } else if (message.type === 'bench_result') {
-
-          lastResult.value = message
-
-          if (message.ok === false && message.error) {
-            lastError.value = message.error
-          }
-
-          if (
-
-            message.temp !== undefined ||
-
-            message.pid_active !== undefined ||
-
-            message.pid_target !== undefined ||
-
-            message.pid_kp !== undefined ||
-
-            message.kp !== undefined
-
-          ) {
-
-            applyTelemetry(message)
-
-          } else if (message.sensors) {
-
-            applyTelemetry({
-
-              temp: message.sensors.temp_c,
-
-              heater_pwm: message.sensors.heater_pwm,
-
-              fan_pwm: message.sensors.fan_pwm,
-
-              session_active: message.sensors.session_active,
-
-            })
-
-          }
-
-          if (message.session_active !== undefined) {
-
-            sessionActive.value = message.session_active
-
-          }
-
-          if (message.pid_active !== undefined) {
-
-            live.value.pidActive = message.pid_active
-
-          }
-
-        } else if (message.type === 'error') {
-
-          lastError.value = message.msg
-
-        } else if (message.type === 'bench_ready') {
-
-          lastResult.value = message
-
-          applyTelemetry(message)
-
+        const msg = JSON.parse(event.data)
+        if (msg.type === 'bench_telemetry' || msg.type === 'bench_ready') {
+          applySnapshot(msg)
         }
-
+        if (msg.type === 'bench_ack' || msg.type === 'bench_ready') {
+          lastAck.value = msg
+          applySnapshot(msg)
+        }
       } catch (e) {
-
-        console.error('Bench WebSocket parse error:', e)
-
+        console.error('Bench parse error:', e)
       }
-
     }
-
-
 
     socket.value.onclose = () => {
-
-      isConnected.value = false
-
-      sessionActive.value = false
-
+      connected.value = false
       lastTelemetryAt.value = null
-
       socket.value = null
-
       reconnectTimer = setTimeout(connect, 3000)
-
     }
-
-
 
     socket.value.onerror = () => {
-
-      isConnected.value = false
-
-      lastError.value =
-
-        'Bench server not reachable (run: python api/hardware_test.py on port 8001)'
-
+      connected.value = false
+      connectError.value = 'Bench offline — run: python api/hardware_test.py on port 8001'
     }
-
   }
 
-
-
-  const disconnect = () => {
-
+  function disconnect() {
     if (reconnectTimer) {
-
       clearTimeout(reconnectTimer)
-
       reconnectTimer = null
-
     }
-
     socket.value?.close()
-
   }
 
-
-
-  const send = (action, extra = {}) => {
-
-    if (!sendJson({ action, ...extra })) {
-
-      lastError.value = 'Not connected to bench API (port 8001)'
-
+  function send(action, extra = {}) {
+    if (!socket.value || socket.value.readyState !== WebSocket.OPEN) {
+      connectError.value = 'Not connected to bench (port 8001)'
+      return false
     }
-
+    socket.value.send(JSON.stringify({ action, ...extra }))
+    return true
   }
-
-
 
   return {
-
     connect,
-
     disconnect,
-
-    isConnected,
-
-    isStreaming,
-
-    lastError,
-
-    lastResult,
-
-    lastTelemetryAt,
-
-    sessionActive,
-
+    connected,
+    connectError,
+    lastAck,
+    streaming,
     live,
-
-    startSession: () => send('SESSION_START'),
-
-    stopSession: () => send('SESSION_STOP'),
-
-    emergencyStop: () => send('E_STOP'),
-
     setFan: (percent) => send('FAN_SET', { percent }),
-
-    stopFan: () => send('FAN_STOP'),
-
-    heatToTarget: (targetTemp) =>
-
-      send('HEAT_TO_TARGET', { target_temp: targetTemp }),
-
-    stopHeating: () => send('HEAT_STOP'),
-
-    setTarget: (targetTemp) =>
-
-      send('SET_TARGET', { target_temp: targetTemp }),
-
-    getPidGains: () => send('GET_PID_GAINS'),
-
-    setPidGains: (kp, ki, kd, resetIntegral = false) =>
-
-      send('SET_PID_GAINS', {
-
-        kp,
-
-        ki,
-
-        kd,
-
-        reset_integral: resetIntegral,
-
-      }),
-
+    fanOff: () => send('FAN_OFF'),
+    heatStart: (target) => send('HEAT_START', { target }),
+    heatStop: () => send('HEAT_STOP'),
+    clearHeaterHalt: () => send('HEATER_CLEAR_HALT'),
+    setTarget: (target) => send('HEAT_SET_TARGET', { target }),
+    pidSet: (kp, ki, kd, resetIntegral = false) =>
+      send('PID_SET', { kp, ki, kd, reset_integral: resetIntegral }),
+    getStatus: () => send('GET_STATUS'),
   }
-
 }
-
-

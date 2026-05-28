@@ -13,7 +13,7 @@ from hardware.controller import RoasterController
 
 hw_manager = RoasterController()
 
-active_connections: list[WebSocket] = []
+active_connections = []
 
 
 @asynccontextmanager
@@ -34,7 +34,7 @@ app.add_middleware(
 )
 
 
-async def _broadcast(message: dict) -> None:
+async def _broadcast(message):
     for ws in list(active_connections):
         try:
             await ws.send_json(message)
@@ -42,11 +42,11 @@ async def _broadcast(message: dict) -> None:
             active_connections.remove(ws)
 
 
-async def _broadcaster() -> None:
+async def _broadcaster():
     while True:
-        data = await hw_manager.message_queue.get()
+        data = await hw_manager.telemetry_queue.get()
         await _broadcast(data)
-        hw_manager.message_queue.task_done()
+        hw_manager.telemetry_queue.task_done()
 
 
 @app.websocket("/ws/telemetry")
@@ -64,6 +64,14 @@ async def websocket_endpoint(websocket: WebSocket):
                 hw_manager.stop_roast()
             elif action == "E_STOP":
                 hw_manager.emergency_stop()
+            elif action == "HEATER_CLEAR_HALT":
+                hw_manager.clear_heater_halt()
+                await websocket.send_json(
+                    {
+                        "type": "heater_status",
+                        "heater_halted": hw_manager._heater.halted,
+                    }
+                )
             elif action == "GET_STATE":
                 await websocket.send_json(
                     {"type": "system_state", "state": hw_manager.state}

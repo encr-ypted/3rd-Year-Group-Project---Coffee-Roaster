@@ -20,7 +20,7 @@ class RoasterController:
     def __init__(self):
         self.is_running = False
         self.state = "IDLE"
-        self.message_queue: asyncio.Queue = asyncio.Queue()
+        self.telemetry_queue = asyncio.Queue()
 
         self.current_temp = 20.0
         self.target_temp = 0.0
@@ -31,26 +31,26 @@ class RoasterController:
         self._session_outcome = "completed"
 
         self.pid = PIDController()
-        self._ror_samples: deque[tuple[float, float]] = deque(maxlen=cfg.ROR_WINDOW_SAMPLES)
+        self._ror_samples = deque(maxlen=cfg.ROR_WINDOW_SAMPLES)
         self._logger = RoastDataLogger(hardware_mode=cfg.HARDWARE_MODE)
 
         self._tc = RoasterThermocouple()
         self._heater = RoasterHeater()
         self._fan = RoasterMotor()
 
-    async def start(self) -> None:
+    async def start(self):
         self.is_running = True
         asyncio.create_task(self._telemetry_loop())
         asyncio.create_task(self._heater_loop())
 
-    def shutdown(self) -> None:
+    def shutdown(self):
         self.is_running = False
         self._heater.stop()
         self._fan.stop()
         if self._logger.is_active:
             self._logger.end_session("shutdown", self.current_temp)
 
-    def start_roast(self, profile_id: str = "default") -> None:
+    def start_roast(self, profile_id="default"):
         self.profile_id = profile_id
         self._session_outcome = "completed"
         self.target_temp = cfg.target_for_profile(profile_id)
@@ -61,24 +61,26 @@ class RoasterController:
         self._logger.start_session(profile_id, self.target_temp)
         self.fan_pwm = self._fan.set_speed()
 
-    def stop_roast(self) -> None:
+    def stop_roast(self):
         self._session_outcome = "stopped"
         self.state = "COOLING"
         self.target_temp = 0.0
         self._heater.stop()
         self.fan_pwm = self._fan.set_speed()
 
-    def emergency_stop(self) -> None:
+    def emergency_stop(self):
         self.state = "IDLE"
         self.target_temp = 0.0
         self._heater.stop()
-        self._fan.stop()
-        self.fan_pwm = 0
+        self.fan_pwm = self._fan.set_speed()
         self.pid.reset()
         if self._logger.is_active:
             self._logger.end_session("e_stop", self.current_temp)
 
-    def _ror(self) -> float:
+    def clear_heater_halt(self):
+        self._heater.clear_halt()
+
+    def _ror(self):
         if len(self._ror_samples) < 2:
             return 0.0
         t0, temp0 = self._ror_samples[0]
@@ -88,7 +90,7 @@ class RoasterController:
             return 0.0
         return ((temp1 - temp0) / dt) * 60.0
 
-    def _log_sample(self, elapsed: float, ror: float, event: str = "") -> None:
+    def _log_sample(self, elapsed, ror, event=""):
         if not self._logger.is_active:
             return
         self._logger.log_sample(
@@ -96,31 +98,18 @@ class RoasterController:
             temp_c=self.current_temp,
             target_c=self.target_temp,
             heater_pct=self.heater_output,
-            fan_pwm=self.fan_pwm,
+            fan_pwm=int(self.fan_pwm),
             ror_c_per_min=ror,
             state=self.state,
             event=event,
         )
 
-    async def _telemetry_loop(self) -> None:
+    async def _telemetry_loop(self):
         while self.is_running:
-            temp, fault = read_thermocouple(self._tc)
+            temp, _fault = read_thermocouple(self._tc)
 
             if temp is None:
-                self._heater.stop()
-                self._fan.stop()
-                self.fan_pwm = 0
-                self.state = "ERROR"
-                if self._logger.is_active:
-                    self._logger.end_session("error", self.current_temp)
-                detail = fault or "unknown fault"
-                await self.message_queue.put(
-                    {
-                        "type": "error",
-                        "msg": f"Thermocouple: {detail} — emergency shutdown",
-                    }
-                )
-                await asyncio.sleep(1)
+                await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
                 continue
 
             self.current_temp = temp
@@ -137,7 +126,7 @@ class RoasterController:
                         event=f"overtemp:{prev_state}->ERROR",
                     )
                     self._logger.end_session("error", temp)
-                await self.message_queue.put(
+                await self.telemetry_queue.put(
                     {
                         "type": "error",
                         "msg": (
@@ -168,7 +157,7 @@ class RoasterController:
                     event = f"state:{prev_state}->{self.state}"
                 self._log_sample(elapsed, ror, event)
 
-            await self.message_queue.put(
+            await self.telemetry_queue.put(
                 {
                     "type": "telemetry",
                     "timestamp": elapsed,
@@ -178,11 +167,12 @@ class RoasterController:
                     "heater_pwm": round(self.heater_output),
                     "fan_pwm": self.fan_pwm,
                     "state": self.state,
+                    "heater_halted": self._heater.halted,
                 }
             )
             await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
 
-    async def _heater_loop(self) -> None:
+    async def _heater_loop(self):
         while self.is_running:
             if self.state in ("PREHEAT", "ROASTING"):
                 output = self.pid.calculate(self.target_temp, self.current_temp)

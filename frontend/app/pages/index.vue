@@ -1,7 +1,7 @@
 <script setup>
 import { useCoffeeRoaster } from '~/composable/useCoffeeRoaster'
 
-const { connect, isConnected, liveData, startRoast, stopRoast, emergencyStop } = useCoffeeRoaster()
+const { connect, isConnected, liveData, startRoast, stopRoast, emergencyStop, clearHeaterHalt } = useCoffeeRoaster()
 
 const isDark = ref(true)
 
@@ -326,7 +326,20 @@ const c = computed(() => isDark.value ? {
               </button>
             </div>
 
-            <div class="mt-4 pt-4" :class="'border-t ' + c.divider">
+            <div class="mt-4 pt-4 space-y-3" :class="'border-t ' + c.divider">
+              <div
+                v-if="liveData.heaterHalted"
+                class="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5"
+              >
+                <p class="text-[10px] text-amber-200 mb-2">Heater latched off — clear before next roast</p>
+                <button
+                  type="button"
+                  class="w-full py-2 rounded-lg text-xs font-semibold bg-amber-600 text-white hover:bg-amber-500"
+                  @click="clearHeaterHalt()"
+                >
+                  Clear heater halt
+                </button>
+              </div>
               <button
                 :class="c.estopExtra"
                 class="w-full py-3.5 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98]
@@ -338,8 +351,8 @@ const c = computed(() => isDark.value ? {
                 <Icon name="lucide:shield-alert" class="w-5 h-5" />
                 Emergency Stop
               </button>
-              <p class="text-[9px] text-center mt-2 tracking-wider uppercase" :class="c.estopSub">
-                Kills heater &amp; fan immediately
+              <p class="text-[9px] text-center tracking-wider uppercase" :class="c.estopSub">
+                Heater off · fan on max
               </p>
             </div>
           </div>
@@ -440,7 +453,20 @@ const c = computed(() => isDark.value ? {
               </div>
             </div>
 
-            <div class="mt-5 pt-4" :class="'border-t ' + c.divider">
+            <div class="mt-5 pt-4 space-y-3" :class="'border-t ' + c.divider">
+              <div
+                v-if="liveData.heaterHalted"
+                class="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5"
+              >
+                <p class="text-[10px] text-amber-200 mb-2">Heater latched off — clear before next roast</p>
+                <button
+                  type="button"
+                  class="w-full py-2.5 rounded-lg text-xs font-semibold bg-amber-600 text-white hover:bg-amber-500"
+                  @click="clearHeaterHalt()"
+                >
+                  Clear heater halt
+                </button>
+              </div>
               <button
                 :class="c.estopExtra"
                 class="w-full py-4 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98]
@@ -452,8 +478,8 @@ const c = computed(() => isDark.value ? {
                 <Icon name="lucide:shield-alert" class="w-5 h-5" />
                 Emergency Stop
               </button>
-              <p class="text-[9px] text-center mt-2.5 tracking-wider uppercase" :class="c.estopSub">
-                Kills heater &amp; fan immediately
+              <p class="text-[9px] text-center tracking-wider uppercase" :class="c.estopSub">
+                Heater off · fan on max
               </p>
             </div>
           </div>

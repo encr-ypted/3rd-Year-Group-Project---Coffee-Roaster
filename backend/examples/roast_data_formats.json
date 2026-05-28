@@ -87,7 +87,7 @@
     "target_c": 210.0,
     "temp_error_c": 22.69,
     "heater_pct": 65.0,
-    "fan_pct": 100,
+    "fan_pwm": 100,
     "ror_c_per_min": 8.2,
     "state": "ROASTING",
     "event": "state:PREHEAT->ROASTING"
@@ -107,7 +107,7 @@
         "temp_c": 22.1,
         "target_c": 210.0,
         "heater_pct": 80,
-        "fan_pct": 100,
+        "fan_pwm": 100,
         "ror_c_per_min": 0.0,
         "state": "PREHEAT",
         "event": ""
@@ -117,7 +117,7 @@
         "temp_c": 23.4,
         "target_c": 210.0,
         "heater_pct": 80,
-        "fan_pct": 100,
+        "fan_pwm": 100,
         "ror_c_per_min": 15.6,
         "state": "PREHEAT",
         "event": ""

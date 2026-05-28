@@ -1,6 +1,5 @@
-"""SSR relay heater with time-proportional control."""
-
 import asyncio
+import time
 
 from gpiozero import DigitalOutputDevice
 
@@ -12,13 +11,41 @@ class RoasterHeater:
         self._relay = DigitalOutputDevice(gpio, active_high=True, initial_value=False)
         self._control_window_s = control_window_s
         self._output = 0.0
-        self._constant_on = False
+        self._halt = False
+
+    def halt(self):
+        self._halt = True
+        self._relay.off()
+        self._output = 0.0
+
+    def clear_halt(self):
+        self._halt = False
+
+    @property
+    def halted(self):
+        return self._halt
+
+    def stop(self):
+        self.halt()
+
+    #Sleep function but sleeps in intervals of 50ms allowing heater to be turned off by emergency stop during current running window
+    async def _sleep_interruptible(self, seconds):
+        if seconds <= 0:
+            return not self._halt
+
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if self._halt:
+                self._relay.off()
+                return False
+            await asyncio.sleep(min(0.05, end - time.monotonic()))
+        return not self._halt
 
     async def apply_output(self, percent=0.0):
+        if self._halt:
+            return 0.0
+
         percent = max(0.0, min(100.0, percent))
-        if self._constant_on:
-            self._output = round(percent, 1)
-            return self._output
         self._output = round(percent, 1)
 
         window = self._control_window_s
@@ -27,29 +54,17 @@ class RoasterHeater:
 
         if percent > 0:
             self._relay.on()
-            await asyncio.sleep(on_time)
+            if not await self._sleep_interruptible(on_time):
+                return 0.0
             self._relay.off()
-            await asyncio.sleep(off_time)
+            if not await self._sleep_interruptible(off_time):
+                return 0.0
         else:
             self._relay.off()
-            await asyncio.sleep(window)
+            if not await self._sleep_interruptible(window):
+                return 0.0
 
-        return self._output
-
-    def force_on(self):
-        """Bench test: relay closed continuously (no time-proportional cycling)."""
-        self._constant_on = True
-        self._relay.on()
-        self._output = 100.0
-
-    def stop(self):
-        self._constant_on = False
-        self._relay.off()
-        self._output = 0.0
-
-    @property
-    def is_constant_on(self) -> bool:
-        return self._constant_on
+        return 0.0 if self._halt else self._output
 
     def read_output(self):
         return self._output

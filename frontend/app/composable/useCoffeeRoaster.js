@@ -11,7 +11,8 @@ const liveData = ref({
     ror: 0.0,
     heaterPwm: 0,
     fanPwm: 0,
-    state: "IDLE"
+    state: "IDLE",
+    heaterHalted: false,
 });
 
 const roastDataPoints = ref([]);
@@ -26,7 +27,7 @@ export const useCoffeeRoaster = () => {
     const connect = () => {
         if (socket.value && socket.value.readyState === WebSocket.OPEN) return;
 
-        const wsUrl = "ws://10.64.26.141:8000/ws/telemetry";
+        const wsUrl = "ws://10.115.50.98:8000/ws/telemetry";
         socket.value = new WebSocket(wsUrl);
 
         socket.value.onopen = () => {
@@ -55,6 +56,8 @@ export const useCoffeeRoaster = () => {
                     }
                 } else if (message.type === "system_state") {
                     liveData.value.state = message.state;
+                } else if (message.type === "heater_status") {
+                    liveData.value.heaterHalted = message.heater_halted ?? false;
                 } else if (message.type === "error") {
                     lastError.value = message.msg;
                 }
@@ -94,6 +97,11 @@ export const useCoffeeRoaster = () => {
         sendJson({ action: 'E_STOP' });
     };
 
+    const clearHeaterHalt = () => {
+        if (!isConnected.value) return;
+        sendJson({ action: 'HEATER_CLEAR_HALT' });
+    };
+
     const getSystemState = () => {
         sendJson({ action: 'GET_STATE' });
     };
@@ -108,6 +116,7 @@ export const useCoffeeRoaster = () => {
         startRoast,
         stopRoast,
         emergencyStop,
+        clearHeaterHalt,
         getSystemState
     };
 };

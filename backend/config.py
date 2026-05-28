@@ -9,16 +9,14 @@ import os
 # Telemetry & control timing
 TELEMETRY_INTERVAL_S = 0.5
 ROR_WINDOW_SAMPLES = 12
-HEATER_CONTROL_WINDOW_S = 2.0
+HEATER_CONTROL_WINDOW_S = 1.0
 
 # Safety & state machine (°C)
 MAX_SAFE_TEMP_C = 250.0
 OVERSHOOT_CUTOFF_C = 15.0
-# Bench: relay full-on until temp is within this many °C of target
-BENCH_FULL_POWER_BAND_C = 15.0
 PREHEAT_THRESHOLD_C = 150.0
 
-COOL_DOWN_TEMP_C = 50.0
+COOL_DOWN_TEMP_C = 34.0
 
 # GPIO (BCM pins for gpiozero)
 HEATER_GPIO = 18
@@ -36,8 +34,8 @@ FAN_DEFAULT_SPEED = 1.0
 THERMOCOUPLE_STARTUP_DELAY_S = 0.5
 
 # PID
-PID_KP = 2.6
-PID_KI = 0.05
+PID_KP = 1.4
+PID_KI = 0.06
 PID_KD = 0
 PID_OUT_MIN = 0.0
 PID_OUT_MAX = 100.0
@@ -45,15 +43,15 @@ PID_INTEGRAL_LIMIT = 500.0
 
 # Roast profiles (target bean temp °C)
 ROAST_PROFILES = {
-    "light": 196.0,
-    "medium": 210.0,
-    "medium-dark": 220.0,
-    "dark": 230.0,
-    "default": 200.0,
+    "light": 40.0,
+    "medium": 40.0,
+    "medium-dark": 40.0,
+    "dark": 40.0,
+    "default": 40.0,
 }
 
 
-def target_for_profile(profile_id: str) -> float:
+def target_for_profile(profile_id):
     return ROAST_PROFILES.get(profile_id, ROAST_PROFILES["default"])
 
 

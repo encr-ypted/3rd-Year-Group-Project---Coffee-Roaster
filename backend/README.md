@@ -41,13 +41,13 @@ For first power-on / wiring checks, use the **bench server** — not the roast A
 | **Run** | `python api/main.py` | `python api/hardware_test.py` |
 | **Port** | 8000 | 8001 |
 | **WebSocket** | `/ws/telemetry` | `/ws/bench` |
-| **Code** | `hardware/controller.py` | `hardware/test_bench.py` |
+| **Code** | `hardware/controller.py` | `verified_hardware/full_control.py` |
 
 Do **not** run both servers on the Pi at once (GPIO conflict).
 
 1. `python api/hardware_test.py`
 2. Open frontend `/hardware-test`
-3. Set target → **Heat to target** (`HEAT_TO_TARGET`) — full power then PID. Fan: start session first.
+3. WebSocket `/ws/bench` — `FAN_SET`, `HEAT_START`, `PID_SET`, `E_STOP` (see `api/hardware_test.py`).
 
 ## Quick start
 
@@ -69,7 +69,7 @@ Dashboard WebSocket: `ws://127.0.0.1:8000/ws/telemetry`
 |--------|------|--------|
 | Start roast | `{"action":"START_ROAST","profile_id":"medium"}` | `PREHEAT`, logging, fan on |
 | Stop & cool | `{"action":"STOP_ROAST"}` | `COOLING`, heater off, fan on |
-| Emergency | `{"action":"E_STOP"}` | `IDLE`, heater/fan off |
+| Emergency | `{"action":"E_STOP"}` | `IDLE`, heater off, fan 100% |
 | State sync | `{"action":"GET_STATE"}` | Reply with current `state` |
 
 ### Server → client (telemetry)
@@ -92,7 +92,7 @@ Every ~0.5 s while roasting:
 On fault:
 
 ```json
-{ "type": "error", "msg": "Thermocouple fault — emergency shutdown" }
+{ "type": "error", "msg": "Thermocouple fault: … — roast continues; check probe wiring" }
 ```
 
 ## RoasterController — state machine
@@ -103,14 +103,14 @@ On fault:
 | `PREHEAT` | Warming toward profile target |
 | `ROASTING` | At/above preheat threshold (150 °C) |
 | `COOLING` | User stopped; fan on until cool |
-| `ERROR` | Sensor fault or over-temp (>250 °C) |
+| `ERROR` | Over-temp (>250 °C) |
 
 **Transitions**
 
 - `START_ROAST` → `PREHEAT`
 - Temp ≥ **150 °C** → `ROASTING`
 - `STOP_ROAST` → `COOLING`
-- Temp ≤ **50 °C** in `COOLING` → `IDLE` (fan off)
+- Temp ≤ **34 °C** in `COOLING` → `IDLE` (fan off)
 - Temp > **250 °C** → `ERROR`
 
 **Profile targets (°C)**
@@ -165,7 +165,7 @@ On each roast:
 - `logs/roast_<id>_meta.json` — session metadata
 - `logs/roasts_index.csv` — one row per roast
 
-**CSV columns:** `roast_id`, `unix_ts`, `elapsed_s`, `profile_id`, `temp_c`, `temp_raw_c`, `target_c`, `temp_error_c`, `heater_pct`, `fan_pct`, `ror_c_per_min`, `state`, `event`
+**CSV columns:** `roast_id`, `unix_ts`, `elapsed_s`, `profile_id`, `temp_c`, `temp_raw_c`, `target_c`, `temp_error_c`, `heater_pct`, `fan_pwm`, `ror_c_per_min`, `state`, `event`
 
 **JSON examples:** `examples/roast_data_formats.json`
 
@@ -189,12 +189,17 @@ backend/
 ├── api/hardware_test.py     # Bench API (port 8001)
 ├── hardware/
 │   ├── controller.py        # RoasterController (roast orchestration)
-│   ├── test_bench.py        # HardwareTestBench (bench only)
 │   ├── thermocouple.py
 │   ├── heater.py
 │   ├── motor.py
 │   ├── pid.py
 │   └── roast_logger.py
+├── verified_hardware/
+│   ├── full_control.py      # HardwareTestBench (bench only)
+│   ├── thermocouple.py
+│   ├── heater.py
+│   ├── motor.py
+│   └── pid.py
 ├── examples/roast_data_formats.json
 ├── requirements.txt
 └── README.md

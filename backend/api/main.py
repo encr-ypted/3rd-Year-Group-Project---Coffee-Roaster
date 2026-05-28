@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import sys
 from contextlib import asynccontextmanager
@@ -9,7 +10,9 @@ import uvicorn
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+import config as cfg
 from hardware.controller import RoasterController
+from hardware.roast_logger import list_sessions
 
 hw_manager = RoasterController()
 
@@ -47,6 +50,25 @@ async def _broadcaster():
         data = await hw_manager.telemetry_queue.get()
         await _broadcast(data)
         hw_manager.telemetry_queue.task_done()
+
+
+@app.get("/api/profiles")
+async def api_roast_profiles():
+    return {"profiles": cfg.list_roast_profiles()}
+
+
+@app.get("/api/roasts")
+async def api_list_roasts():
+    return {"log_folder": cfg.LOG_FOLDER, "sessions": list_sessions()}
+
+
+@app.get("/api/roasts/{roast_id}")
+async def api_roast_meta(roast_id: str):
+    meta_path = os.path.join(cfg.LOG_FOLDER, f"roast_{roast_id}_meta.json")
+    if not os.path.isfile(meta_path):
+        return {"ok": False, "error": "not found"}
+    with open(meta_path, encoding="utf-8") as f:
+        return {"ok": True, "meta": json.load(f)}
 
 
 @app.websocket("/ws/telemetry")

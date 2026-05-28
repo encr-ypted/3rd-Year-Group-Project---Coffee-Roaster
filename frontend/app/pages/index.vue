@@ -1,14 +1,37 @@
 <script setup>
 import { useCoffeeRoaster } from '~/composable/useCoffeeRoaster'
 
-const { connect, isConnected, liveData, startRoast, stopRoast, emergencyStop, clearHeaterHalt } = useCoffeeRoaster()
+const {
+  connect,
+  loadProfiles,
+  isConnected,
+  liveData,
+  roastProfiles,
+  profilesLoaded,
+  startRoast,
+  stopRoast,
+  emergencyStop,
+  clearHeaterHalt,
+} = useCoffeeRoaster()
 
 const isDark = ref(true)
+const selectedProfile = ref(null)
 
 onMounted(() => {
   connect()
+  loadProfiles()
   const saved = localStorage.getItem('roaster-theme')
   if (saved !== null) isDark.value = saved === 'dark'
+})
+
+watch(roastProfiles, (list) => {
+  if (!list.length) return
+  if (!selectedProfile.value) {
+    selectedProfile.value = list.find((p) => p.id === 'medium') ?? list[0]
+    return
+  }
+  const match = list.find((p) => p.id === selectedProfile.value.id)
+  if (match) selectedProfile.value = match
 })
 
 watch(isDark, (v) => localStorage.setItem('roaster-theme', v ? 'dark' : 'light'))
@@ -35,14 +58,6 @@ const stateDisplay = computed(() => {
 const rorSign = computed(() => liveData.value.ror >= 0 ? '+' : '')
 const isIdle = computed(() => liveData.value.state === 'IDLE')
 const isActive = computed(() => ['PREHEAT', 'ROASTING', 'COOLING'].includes(liveData.value.state))
-
-const roastProfiles = [
-  { id: 'light',       name: 'Light',    temp: 196, desc: 'Fruity & bright',    dot: 'bg-amber-400' },
-  { id: 'medium',      name: 'Medium',   temp: 210, desc: 'Balanced & smooth',  dot: 'bg-amber-600' },
-  { id: 'medium-dark', name: 'Med-Dark', temp: 220, desc: 'Rich & full-bodied', dot: 'bg-amber-800' },
-  { id: 'dark',        name: 'Dark',     temp: 230, desc: 'Bold & smoky',       dot: 'bg-amber-950' },
-]
-const selectedProfile = ref(roastProfiles[1])
 
 // Theme color map — keeps the template clean
 const c = computed(() => isDark.value ? {
@@ -275,25 +290,26 @@ const c = computed(() => isDark.value ? {
               <label class="text-[9px] font-bold uppercase tracking-[0.15em] mb-2 block" :class="c.profLbl">
                 Roast Profile
               </label>
-              <div class="grid grid-cols-2 gap-2">
+              <p v-if="!profilesLoaded" class="text-[10px]" :class="c.profLbl">Loading profiles from Pi…</p>
+              <div v-else class="grid grid-cols-2 gap-2">
                 <button
                   v-for="profile in roastProfiles"
                   :key="profile.id"
-                  :disabled="!isIdle"
+                  :disabled="!isIdle || !selectedProfile"
                   class="prof-btn"
-                  :class="selectedProfile.id === profile.id ? c.profSel : c.profDef"
+                  :class="selectedProfile?.id === profile.id ? c.profSel : c.profDef"
                   @click="isIdle && (selectedProfile = profile)"
                 >
                   <div class="flex items-center gap-1.5 mb-0.5">
                     <span class="w-2 h-2 rounded-full shrink-0" :class="profile.dot" />
                     <span
                       class="text-[11px] font-bold truncate"
-                      :class="selectedProfile.id === profile.id ? c.profNSel : c.profNDef"
+                      :class="selectedProfile?.id === profile.id ? c.profNSel : c.profNDef"
                     >{{ profile.name }}</span>
                   </div>
                   <span
                     class="text-[10px] font-bold tabular-nums"
-                    :class="selectedProfile.id === profile.id ? c.profTSel : c.profTDef"
+                    :class="selectedProfile?.id === profile.id ? c.profTSel : c.profTDef"
                   >{{ profile.temp }}°C</span>
                 </button>
               </div>
@@ -302,7 +318,7 @@ const c = computed(() => isDark.value ? {
             <!-- Buttons -->
             <div class="space-y-2">
               <button
-                :disabled="!isIdle || !isConnected"
+                :disabled="!isIdle || !isConnected || !selectedProfile"
                 :class="c.ringOff"
                 class="ctrl-btn bg-emerald-600 hover:bg-emerald-500
                        focus-visible:ring-emerald-500 text-white shadow-lg shadow-emerald-900/30
@@ -401,25 +417,26 @@ const c = computed(() => isDark.value ? {
                 <label class="text-[9px] font-bold uppercase tracking-[0.15em] mb-2.5 block" :class="c.profLbl">
                   Roast Profile
                 </label>
-                <div class="grid grid-cols-2 gap-2 mb-4 sm:mb-0">
+                <p v-if="!profilesLoaded" class="text-[10px] mb-4 sm:mb-0" :class="c.profLbl">Loading profiles from Pi…</p>
+                <div v-else class="grid grid-cols-2 gap-2 mb-4 sm:mb-0">
                   <button
                     v-for="profile in roastProfiles"
                     :key="'m-' + profile.id"
-                    :disabled="!isIdle"
+                    :disabled="!isIdle || !selectedProfile"
                     class="prof-btn"
-                    :class="selectedProfile.id === profile.id ? c.profSel : c.profDef"
+                    :class="selectedProfile?.id === profile.id ? c.profSel : c.profDef"
                     @click="isIdle && (selectedProfile = profile)"
                   >
                     <div class="flex items-center gap-1.5 mb-0.5">
                       <span class="w-2 h-2 rounded-full shrink-0" :class="profile.dot" />
                       <span
                         class="text-[11px] font-bold truncate"
-                        :class="selectedProfile.id === profile.id ? c.profNSel : c.profNDef"
+                        :class="selectedProfile?.id === profile.id ? c.profNSel : c.profNDef"
                       >{{ profile.name }}</span>
                     </div>
                     <span
                       class="text-[10px] font-bold tabular-nums"
-                      :class="selectedProfile.id === profile.id ? c.profTSel : c.profTDef"
+                      :class="selectedProfile?.id === profile.id ? c.profTSel : c.profTDef"
                     >{{ profile.temp }}°C</span>
                   </button>
                 </div>
@@ -428,7 +445,7 @@ const c = computed(() => isDark.value ? {
               <!-- Buttons stack -->
               <div class="flex flex-col gap-2 sm:min-w-[200px]">
                 <button
-                  :disabled="!isIdle || !isConnected"
+                  :disabled="!isIdle || !isConnected || !selectedProfile"
                   :class="c.ringOff"
                   class="ctrl-btn bg-emerald-600 hover:bg-emerald-500
                          focus-visible:ring-emerald-500 text-white shadow-lg shadow-emerald-900/30

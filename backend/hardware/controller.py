@@ -51,6 +51,9 @@ class RoasterController:
             self._logger.end_session("shutdown", self.current_temp)
 
     def start_roast(self, profile_id="default"):
+        if self._logger.is_active:
+            self._logger.end_session("replaced", self.current_temp)
+
         self.profile_id = profile_id
         self._session_outcome = "completed"
         self.target_temp = cfg.target_for_profile(profile_id)
@@ -72,9 +75,11 @@ class RoasterController:
         self.state = "IDLE"
         self.target_temp = 0.0
         self._heater.stop()
-        self.fan_pwm = self._fan.set_speed()
+        self.fan_pwm = self._fan.set_speed(1.0)
         self.pid.reset()
         if self._logger.is_active:
+            elapsed = round(time.time() - self.start_time, 1) if self.start_time else 0.0
+            self._log_sample(elapsed, self._ror(), event="state:->IDLE:e_stop")
             self._logger.end_session("e_stop", self.current_temp)
 
     def clear_heater_halt(self):
@@ -97,7 +102,7 @@ class RoasterController:
             elapsed_s=elapsed,
             temp_c=self.current_temp,
             target_c=self.target_temp,
-            heater_pct=self.heater_output,
+            heater_pwm=self.heater_output,
             fan_pwm=int(self.fan_pwm),
             ror_c_per_min=ror,
             state=self.state,
@@ -144,6 +149,14 @@ class RoasterController:
                 self._fan.stop()
                 self.fan_pwm = 0
                 if self._logger.is_active:
+                    elapsed = (
+                        round(time.time() - self.start_time, 1)
+                        if self.start_time
+                        else 0.0
+                    )
+                    self._log_sample(
+                        elapsed, self._ror(), event="state:COOLING->IDLE"
+                    )
                     self._logger.end_session(self._session_outcome, temp)
 
             ror = self._ror()
@@ -151,25 +164,30 @@ class RoasterController:
                 round(time.time() - self.start_time, 1) if self.start_time else 0.0
             )
 
-            if self._logger.is_active and self.state not in ("IDLE", "ERROR"):
+            if self._logger.is_active and self.state in (
+                "PREHEAT",
+                "ROASTING",
+                "COOLING",
+            ):
                 event = ""
                 if prev_state != self.state:
                     event = f"state:{prev_state}->{self.state}"
                 self._log_sample(elapsed, ror, event)
 
-            await self.telemetry_queue.put(
-                {
-                    "type": "telemetry",
-                    "timestamp": elapsed,
-                    "temp": round(temp, 1),
-                    "target": self.target_temp,
-                    "ror": round(ror, 1) if self.state != "IDLE" else 0.0,
-                    "heater_pwm": round(self.heater_output),
-                    "fan_pwm": self.fan_pwm,
-                    "state": self.state,
-                    "heater_halted": self._heater.halted,
-                }
-            )
+            payload = {
+                "type": "telemetry",
+                "timestamp": elapsed,
+                "temp": round(temp, 1),
+                "target": self.target_temp,
+                "ror": round(ror, 1) if self.state != "IDLE" else 0.0,
+                "heater_pwm": round(self.heater_output),
+                "fan_pwm": self.fan_pwm,
+                "state": self.state,
+                "heater_halted": self._heater.halted,
+            }
+            if self._logger.is_active:
+                payload["roast_id"] = self._logger.roast_id
+            await self.telemetry_queue.put(payload)
             await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
 
     async def _heater_loop(self):

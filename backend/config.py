@@ -41,21 +41,64 @@ PID_OUT_MIN = 0.0
 PID_OUT_MAX = 100.0
 PID_INTEGRAL_LIMIT = 500.0
 
-# Roast profiles (target bean temp °C)
+# Roast profiles — single source of truth for UI + PID target (°C)
 ROAST_PROFILES = {
-    "light": 40.0,
-    "medium": 40.0,
-    "medium-dark": 40.0,
-    "dark": 40.0,
-    "default": 40.0,
+    "light": {
+        "target_c": 196.0,
+        "name": "Light",
+        "desc": "Fruity & bright",
+    },
+    "medium": {
+        "target_c": 210.0,
+        "name": "Medium",
+        "desc": "Balanced & smooth",
+    },
+    "medium-dark": {
+        "target_c": 220.0,
+        "name": "Med-Dark",
+        "desc": "Rich & full-bodied",
+    },
+    "dark": {
+        "target_c": 230.0,
+        "name": "Dark",
+        "desc": "Bold & smoky",
+    },
+    "default": {
+        "target_c": 210.0,
+        "name": "Default",
+        "desc": "",
+    },
 }
+
+# Order shown on the dashboard (default is fallback only, not listed)
+ROAST_PROFILE_ORDER = ["light", "medium", "medium-dark", "dark"]
 
 
 def target_for_profile(profile_id):
-    return ROAST_PROFILES.get(profile_id, ROAST_PROFILES["default"])
+    entry = ROAST_PROFILES.get(profile_id) or ROAST_PROFILES["default"]
+    return float(entry["target_c"])
 
 
-# Data logging
-LOG_FOLDER = os.getenv("ROASTER_LOG_FOLDER", "logs")
+def list_roast_profiles():
+    profiles = []
+    for profile_id in ROAST_PROFILE_ORDER:
+        if profile_id not in ROAST_PROFILES:
+            continue
+        entry = ROAST_PROFILES[profile_id]
+        profiles.append(
+            {
+                "id": profile_id,
+                "name": entry["name"],
+                "target_c": entry["target_c"],
+                "desc": entry.get("desc", ""),
+            }
+        )
+    return profiles
+
+
+# Data logging (always under backend/ unless ROASTER_LOG_FOLDER is absolute)
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+_log_dir = os.getenv("ROASTER_LOG_FOLDER", "logs")
+LOG_FOLDER = _log_dir if os.path.isabs(_log_dir) else os.path.join(_BACKEND_DIR, _log_dir)
 LOG_INDEX_FILE = "roasts_index.csv"
 HARDWARE_MODE = os.getenv("ROASTER_HARDWARE_MODE", "pi")

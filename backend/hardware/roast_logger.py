@@ -2,9 +2,9 @@
 Persist roast sessions for offline analysis and ML.
 
 Each session writes:
-  • logs/roast_<id>.csv      — time-series samples (2 Hz during active roast)
-  • logs/roast_<id>_meta.json — session labels and summary stats
-  • logs/roasts_index.csv    — one row per session for dataset browsing
+  logs/roast_<id>.csv       — time-series samples (~2 Hz while session active)
+  logs/roast_<id>_meta.json — session labels and summary stats
+  logs/roasts_index.csv     — one row per session
 """
 
 import csv
@@ -24,7 +24,7 @@ SAMPLE_COLUMNS = [
     "temp_raw_c",
     "target_c",
     "temp_error_c",
-    "heater_pct",
+    "heater_pwm",
     "fan_pwm",
     "ror_c_per_min",
     "state",
@@ -47,8 +47,17 @@ INDEX_COLUMNS = [
 ]
 
 
+def list_sessions():
+    """Read roasts_index.csv; returns list of dicts (newest last)."""
+    index_path = os.path.join(LOG_FOLDER, LOG_INDEX_FILE)
+    if not os.path.exists(index_path):
+        return []
+    with open(index_path, newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
 class RoastDataLogger:
-    def __init__(self, hardware_mode: str = "mock"):
+    def __init__(self, hardware_mode="pi"):
         self.hardware_mode = hardware_mode
         self._active = False
         self._roast_id = ""
@@ -59,33 +68,38 @@ class RoastDataLogger:
         self._csv_file = None
         self._writer = None
         self._sample_count = 0
-        self._max_temp: float | None = None
+        self._max_temp = None
         self._last_state = ""
         self._start_unix = 0.0
 
     @property
-    def is_active(self) -> bool:
+    def is_active(self):
         return self._active
 
     @property
-    def roast_id(self) -> str:
+    def roast_id(self):
         return self._roast_id
 
-    def start_session(self, profile_id: str, target_temp_c: float) -> str:
+    @property
+    def csv_path(self):
+        return self._csv_path
+
+    def start_session(self, profile_id, target_temp_c):
+        if self._active:
+            self.end_session("replaced")
+
         os.makedirs(LOG_FOLDER, exist_ok=True)
 
         self._roast_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self._profile_id = profile_id
-        self._target_c = target_temp_c
+        self._target_c = float(target_temp_c)
         self._started_at = datetime.now(timezone.utc).isoformat()
         self._start_unix = time.time()
         self._sample_count = 0
         self._max_temp = None
         self._last_state = ""
 
-        self._csv_path = os.path.join(
-            LOG_FOLDER, f"roast_{self._roast_id}.csv"
-        )
+        self._csv_path = os.path.join(LOG_FOLDER, f"roast_{self._roast_id}.csv")
         self._csv_file = open(self._csv_path, "w", newline="", encoding="utf-8")
         self._writer = csv.writer(self._csv_file)
         self._writer.writerow(SAMPLE_COLUMNS)
@@ -95,16 +109,16 @@ class RoastDataLogger:
     def log_sample(
         self,
         *,
-        elapsed_s: float,
-        temp_c: float,
-        target_c: float,
-        heater_pct: float,
-        fan_pwm: int,
-        ror_c_per_min: float,
-        state: str,
-        temp_raw_c: float | None = None,
-        event: str = "",
-    ) -> None:
+        elapsed_s,
+        temp_c,
+        target_c,
+        heater_pwm,
+        fan_pwm,
+        ror_c_per_min,
+        state,
+        temp_raw_c=None,
+        event="",
+    ):
         if not self._active or not self._writer:
             return
 
@@ -117,12 +131,12 @@ class RoastDataLogger:
                 datetime.now(timezone.utc).timestamp(),
                 round(elapsed_s, 2),
                 self._profile_id,
-                temp_c,
-                "" if temp_raw_c is None else temp_raw_c,
-                target_c,
+                round(temp_c, 2),
+                "" if temp_raw_c is None else round(temp_raw_c, 2),
+                round(target_c, 2),
                 round(target_c - temp_c, 2),
-                heater_pct,
-                fan_pwm,
+                round(heater_pwm, 1),
+                int(fan_pwm),
                 round(ror_c_per_min, 2),
                 state,
                 event,
@@ -132,18 +146,7 @@ class RoastDataLogger:
         self._sample_count += 1
         self._last_state = state
 
-    def log_state_change(self, new_state: str, **sample_kwargs) -> None:
-        if new_state == self._last_state:
-            self.log_sample(**sample_kwargs)
-            return
-        event = f"state:{self._last_state}->{new_state}" if self._last_state else f"state:->{new_state}"
-        self.log_sample(event=event, **sample_kwargs)
-
-    def end_session(
-        self,
-        outcome: str,
-        final_temp_c: float | None = None,
-    ) -> str | None:
+    def end_session(self, outcome, final_temp_c=None):
         if not self._active:
             return None
 
@@ -177,7 +180,7 @@ class RoastDataLogger:
         self._append_index(meta, final_temp_c)
         return meta_path
 
-    def _append_index(self, meta: dict, final_temp_c: float | None) -> None:
+    def _append_index(self, meta, final_temp_c):
         index_path = os.path.join(LOG_FOLDER, LOG_INDEX_FILE)
         write_header = not os.path.exists(index_path)
 
@@ -197,7 +200,7 @@ class RoastDataLogger:
                     meta["outcome"],
                     meta["sample_count"],
                     meta["max_temp_c"],
-                    final_temp_c if final_temp_c is not None else "",
+                    "" if final_temp_c is None else final_temp_c,
                     meta["csv_path"],
                 ]
             )

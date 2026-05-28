@@ -1,8 +1,20 @@
 import { ref } from 'vue';
 
+const API_BASE = 'http://10.115.50.98:8000';
+const WS_URL = 'ws://10.115.50.98:8000/ws/telemetry';
+
+const PROFILE_DOTS = {
+    light: 'bg-amber-400',
+    medium: 'bg-amber-600',
+    'medium-dark': 'bg-amber-800',
+    dark: 'bg-amber-950',
+};
+
 const socket = ref(null);
 const isConnected = ref(false);
 const lastError = ref(null);
+const roastProfiles = ref([]);
+const profilesLoaded = ref(false);
 
 const liveData = ref({
     timestamp: 0,
@@ -11,7 +23,7 @@ const liveData = ref({
     ror: 0.0,
     heaterPwm: 0,
     fanPwm: 0,
-    state: "IDLE",
+    state: 'IDLE',
     heaterHalted: false,
 });
 
@@ -23,12 +35,36 @@ const sendJson = (payload) => {
     return true;
 };
 
+function mapProfiles(rows) {
+    return rows.map((p) => ({
+        id: p.id,
+        name: p.name,
+        desc: p.desc || '',
+        temp: p.target_c,
+        target_c: p.target_c,
+        dot: PROFILE_DOTS[p.id] || 'bg-amber-600',
+    }));
+}
+
 export const useCoffeeRoaster = () => {
+    const loadProfiles = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/api/profiles`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            roastProfiles.value = mapProfiles(data.profiles || []);
+            profilesLoaded.value = true;
+        } catch (e) {
+            console.error('Failed to load roast profiles:', e);
+            lastError.value = 'Could not load roast profiles from Pi (GET /api/profiles)';
+            profilesLoaded.value = false;
+        }
+    };
+
     const connect = () => {
         if (socket.value && socket.value.readyState === WebSocket.OPEN) return;
 
-        const wsUrl = "ws://10.115.50.98:8000/ws/telemetry";
-        socket.value = new WebSocket(wsUrl);
+        socket.value = new WebSocket(WS_URL);
 
         socket.value.onopen = () => {
             isConnected.value = true;
@@ -40,25 +76,27 @@ export const useCoffeeRoaster = () => {
             try {
                 const message = JSON.parse(event.data);
 
-                if (message.type === "telemetry") {
+                if (message.type === 'telemetry') {
                     liveData.value = {
+                        ...liveData.value,
                         timestamp: message.timestamp,
                         temp: message.temp,
                         targetTemp: message.target,
                         ror: message.ror,
                         heaterPwm: message.heater_pwm,
                         fanPwm: message.fan_pwm,
-                        state: message.state
+                        state: message.state,
+                        heaterHalted: message.heater_halted ?? liveData.value.heaterHalted,
                     };
 
-                    if (message.state !== "IDLE") {
+                    if (message.state !== 'IDLE') {
                         roastDataPoints.value.push({ ...liveData.value });
                     }
-                } else if (message.type === "system_state") {
+                } else if (message.type === 'system_state') {
                     liveData.value.state = message.state;
-                } else if (message.type === "heater_status") {
+                } else if (message.type === 'heater_status') {
                     liveData.value.heaterHalted = message.heater_halted ?? false;
-                } else if (message.type === "error") {
+                } else if (message.type === 'error') {
                     lastError.value = message.msg;
                 }
             } catch (e) {
@@ -109,14 +147,17 @@ export const useCoffeeRoaster = () => {
     return {
         connect,
         disconnect,
+        loadProfiles,
         isConnected,
         lastError,
         liveData,
+        roastProfiles,
+        profilesLoaded,
         roastDataPoints,
         startRoast,
         stopRoast,
         emergencyStop,
         clearHeaterHalt,
-        getSystemState
+        getSystemState,
     };
 };

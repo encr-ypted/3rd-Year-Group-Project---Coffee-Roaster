@@ -165,13 +165,17 @@ On each roast:
 - `logs/roast_<id>_meta.json` — session metadata
 - `logs/roasts_index.csv` — one row per roast
 
-**CSV columns:** `roast_id`, `unix_ts`, `elapsed_s`, `profile_id`, `temp_c`, `temp_raw_c`, `target_c`, `temp_error_c`, `heater_pct`, `fan_pwm`, `ror_c_per_min`, `state`, `event`
+**CSV columns:** `roast_id`, `unix_ts`, `elapsed_s`, `profile_id`, `temp_c`, `temp_raw_c`, `target_c`, `temp_error_c`, `heater_pwm`, `fan_pwm`, `ror_c_per_min`, `state`, `event`
+
+**HTTP:** `GET /api/roasts` — list sessions from `roasts_index.csv`; `GET /api/roasts/{roast_id}` — session metadata JSON.
+
+Logs are written to `backend/logs/` (or `ROASTER_LOG_FOLDER` if set).
 
 **JSON examples:** `examples/roast_data_formats.json`
 
 ## Configuration
 
-Hardware and logging settings: **`config.py`** (GPIO, PID, safety limits, roast profiles).
+Hardware and logging settings: **`config.py`** (GPIO, PID, safety limits, roast profiles). The dashboard loads profiles from **`GET /api/profiles`** (same data as `ROAST_PROFILES`).
 
 LCD smoke test and realtime dashboard: **`docs/lcd_st7796_test.md`**,
 **`hardware/lcd_st7796_test.py`**, and **`hardware/lcd_dashboard.py`**.

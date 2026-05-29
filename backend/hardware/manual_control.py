@@ -35,6 +35,7 @@ class HardwareTestBench:
 
     async def run(self):
         self.running = True
+        self.fan_pwm = self._fan.set_speed(cfg.FAN_DEFAULT_SPEED)
         asyncio.create_task(self._telemetry_loop())
 
     def close(self):
@@ -59,11 +60,9 @@ class HardwareTestBench:
         self._fan.stop()
         self.fan_pwm = 0
 
-    def clear_heater_halt(self):
-        self._heater.clear_halt()
-
     def start_heat(self, target_c):
         self.stop_heat()
+        self._heater.clear_halt()
         self.target_c = max(20.0, min(float(target_c), cfg.MAX_SAFE_TEMP_C - 5.0))
         self.pid.reset()
         self.heating = True
@@ -104,6 +103,8 @@ class HardwareTestBench:
 
                 duty = self._heater_duty(temp)
                 self.heater_pwm = round(await self._heater.apply_output(duty), 1)
+                if self._heater.halted:
+                    await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
         except asyncio.CancelledError:
             raise
         finally:
@@ -123,7 +124,6 @@ class HardwareTestBench:
             "heater_pwm": self.heater_pwm,
             "heating": self.heating,
             "target": round(self.target_c, 1) if self.heating else None,
-            "heater_halted": self._heater.halted,
             "pid_kp": pid_config["kp"],
             "pid_ki": pid_config["ki"],
             "pid_kd": pid_config["kd"],

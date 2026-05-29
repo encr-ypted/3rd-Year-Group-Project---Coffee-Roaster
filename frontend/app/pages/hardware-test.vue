@@ -12,7 +12,6 @@ const {
   fanOff,
   heatStart,
   heatStop,
-  clearHeaterHalt,
   setTarget,
   pidSet,
   getStatus,
@@ -89,20 +88,6 @@ const statusText = computed(() => {
           <span v-if="live.heating && live.target"> → {{ live.target }}°C</span>
           · Fan {{ live.fanPwm }}%
         </p>
-        <div
-          v-if="live.heaterHalted"
-          class="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 flex items-center justify-between gap-2"
-        >
-          <p class="text-xs text-amber-200">Heater latched off after stop</p>
-          <button
-            type="button"
-            class="shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 text-white disabled:opacity-40"
-            :disabled="!connected"
-            @click="clearHeaterHalt"
-          >
-            Clear halt
-          </button>
-        </div>
       </section>
 
       <section class="rounded-2xl border border-orange-500/20 bg-orange-500/5 p-5 space-y-3">

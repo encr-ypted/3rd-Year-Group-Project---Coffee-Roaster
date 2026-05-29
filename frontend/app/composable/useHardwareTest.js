@@ -1,6 +1,8 @@
 import { ref } from 'vue'
 
-const BENCH_WS_URL = 'ws://10.115.50.98:8001/ws/bench'
+
+const HOST = "samimarouf:8001"
+const BENCH_WS_URL = `ws://${HOST}/ws/bench`;
 
 const socket = ref(null)
 const connected = ref(false)
@@ -13,7 +15,6 @@ const live = ref({
   fanPwm: 0,
   heaterPwm: 0,
   heating: false,
-  heaterHalted: false,
   target: null,
   pidKp: 2.6,
   pidKi: 0.05,
@@ -27,7 +28,6 @@ function applySnapshot(msg) {
   if (msg.fan_pwm !== undefined) live.value.fanPwm = msg.fan_pwm
   if (msg.heater_pwm !== undefined) live.value.heaterPwm = msg.heater_pwm
   if (msg.heating !== undefined) live.value.heating = msg.heating
-  if (msg.heater_halted !== undefined) live.value.heaterHalted = msg.heater_halted
   if (msg.target !== undefined) live.value.target = msg.target
   if (msg.pid_kp !== undefined) live.value.pidKp = msg.pid_kp
   if (msg.pid_ki !== undefined) live.value.pidKi = msg.pid_ki
@@ -112,7 +112,6 @@ export function useHardwareTest() {
     fanOff: () => send('FAN_OFF'),
     heatStart: (target) => send('HEAT_START', { target }),
     heatStop: () => send('HEAT_STOP'),
-    clearHeaterHalt: () => send('HEATER_CLEAR_HALT'),
     setTarget: (target) => send('HEAT_SET_TARGET', { target }),
     pidSet: (kp, ki, kd, resetIntegral = false) =>
       send('PID_SET', { kp, ki, kd, reset_integral: resetIntegral }),

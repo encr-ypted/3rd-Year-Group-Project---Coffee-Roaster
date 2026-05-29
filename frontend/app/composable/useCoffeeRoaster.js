@@ -1,7 +1,8 @@
 import { ref } from 'vue';
 
-const API_BASE = 'http://10.115.50.98:8000';
-const WS_URL = 'ws://10.115.50.98:8000/ws/telemetry';
+const HOST = "samimarouf:8000"
+const API_BASE = `http://${HOST}`;
+const WS_URL = `ws://${HOST}/ws/telemetry`;
 
 const PROFILE_DOTS = {
     light: 'bg-amber-400',

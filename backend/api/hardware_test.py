@@ -74,10 +74,6 @@ def _dispatch(action: str, body: dict) -> dict:
         bench.stop_heat()
         return {"ok": True, "heating": False, **bench.snapshot()}
 
-    if action == "HEATER_CLEAR_HALT":
-        bench.clear_heater_halt()
-        return {"ok": True, **bench.snapshot()}
-
     if action == "HEAT_SET_TARGET":
         target = bench.set_target(float(body.get("target", bench.target_c)))
         return {"ok": True, "target": target, **bench.snapshot()}

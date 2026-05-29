@@ -62,6 +62,7 @@ class RoasterController:
         self.pid.reset()
         self._ror_samples.clear()
         self._logger.start_session(profile_id, self.target_temp)
+        self._heater.clear_halt()
         self.fan_pwm = self._fan.set_speed()
 
     def stop_roast(self):

@@ -1,0 +1,95 @@
+# FRONTEND
+# Nuxt dev/build outputs
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
+
+# Node dependencies
+node_modules
+
+# Logs
+logs
+*.log
+
+# Misc
+.DS_Store
+.fleet
+.idea
+
+# Local env files
+.env
+.env.*
+!.env.example
+
+
+#BACKEND
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments (where your Python packages live)
+venv/
+env/
+.venv/
+.env/
+
+# Environment Variables (NEVER commit secrets or API keys)
+.env
+.env.local
+
+# Logs and debugging
+*.log
+backend/logs/
+
+# =========================
+# 2. Database (SQLite)
+# =========================
+# NEVER commit the active database! It will cause massive merge 
+# conflicts and overwrite your team's test data.
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+backend/database/roasts.db
+
+# =========================
+# 3. Node.js & Nuxt (Frontend)
+# =========================
+# Node modules (Massive folder, let npm install handle this)
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+
+# =========================
+# 4. OS & IDE Specific
+# =========================
+# Mac
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs (VS Code, PyCharm, etc.)
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# 5. Data Analysis & Stretch Goals
+# =========================
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+# Large datasets or exported CSVs you don't want in version control
+data_analysis/exports/*.csv

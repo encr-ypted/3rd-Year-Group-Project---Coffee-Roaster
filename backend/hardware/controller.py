@@ -10,7 +10,7 @@ from collections import deque
 
 from hardware.heater import RoasterHeater
 from hardware.motor import RoasterMotor
-from hardware.pid import PIDController
+from hardware.heater_control import create_heater_controller
 from hardware.roast_logger import RoastDataLogger
 from hardware.thermocouple import RoasterThermocouple, read_thermocouple
 import config as cfg
@@ -31,7 +31,7 @@ class RoasterController:
         self._session_outcome = "completed"
         self._test_spin_active = False
 
-        self.pid = PIDController()
+        self.heater_controller = create_heater_controller()
         self._ror_samples = deque(maxlen=cfg.ROR_WINDOW_SAMPLES)
         self._logger = RoastDataLogger(hardware_mode=cfg.HARDWARE_MODE)
 
@@ -106,7 +106,7 @@ class RoasterController:
         self.target_temp = cfg.target_for_profile(profile_id)
         self.state = "PREHEAT"
         self.start_time = time.time()
-        self.pid.reset()
+        self.heater_controller.reset()
         self._ror_samples.clear()
         self._logger.start_session(profile_id, self.target_temp)
         self._heater.clear_halt()
@@ -151,7 +151,7 @@ class RoasterController:
         self.target_temp = 0.0
         self._heater.stop()
         self.fan_pwm = self._fan.set_speed()
-        self.pid.reset()
+        self.heater_controller.reset()
         if self._logger.is_active:
             elapsed = round(time.time() - self.start_time, 1) if self.start_time else 0.0
             self._log_sample(elapsed, self._ror(), event="state:->IDLE:e_stop")
@@ -296,7 +296,9 @@ class RoasterController:
     async def _heater_loop(self):
         while self.is_running:
             if self.state in ("PREHEAT", "ROASTING"):
-                output = self.pid.calculate(self.target_temp, self.current_temp)
+                output = self.heater_controller.calculate(
+                    self.target_temp, self.current_temp
+                )
 
                 if self.current_temp > self.target_temp + cfg.OVERSHOOT_CUTOFF_C:
                     output = 0.0

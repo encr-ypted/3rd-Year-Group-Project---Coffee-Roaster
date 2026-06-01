@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import config as cfg
 from hardware.manual_control import HardwareTestBench
 
-PORT = 8001
+PORT = 8000
 bench = HardwareTestBench()
 clients: list[WebSocket] = []
 
@@ -57,6 +57,18 @@ async def _relay() -> None:
         bench.telemetry_queue.task_done()
 
 
+def _controller_defaults():
+    return {
+        "pid": {"kp": cfg.PID_KP, "ki": cfg.PID_KI, "kd": cfg.PID_KD},
+        "mpc": {
+            "weight_tracking": cfg.MPC_WEIGHT_TRACKING,
+            "weight_heater_chg": cfg.MPC_WEIGHT_HEATER_CHG,
+            "weight_overshoot": cfg.MPC_WEIGHT_OVERSHOOT,
+            "horizon": cfg.MPC_PREDICTION_HORIZON,
+        },
+    }
+
+
 def _dispatch(action: str, body: dict) -> dict:
     if action == "FAN_SET":
         pwm = bench.set_fan(float(body.get("percent", 0)))
@@ -78,21 +90,63 @@ def _dispatch(action: str, body: dict) -> dict:
         target = bench.set_target(float(body.get("target", bench.target_c)))
         return {"ok": True, "target": target, **bench.snapshot()}
 
+    if action == "SET_CONTROLLER":
+        mode = body.get("mode", "mpc")
+        ok = bench.set_controller(mode)
+        return {
+            "ok": ok,
+            "controller": bench.controller_mode,
+            "defaults": _controller_defaults(),
+            **bench.snapshot(),
+        }
+
     if action == "PID_SET":
+        if bench.controller_mode != "pid":
+            return {
+                "ok": False,
+                "error": "Bench is in MPC mode — switch to PID first",
+                **bench.snapshot(),
+            }
         g = bench.set_pid(
             float(body["kp"]) if "kp" in body else None,
             float(body["ki"]) if "ki" in body else None,
             float(body["kd"]) if "kd" in body else None,
             reset=bool(body.get("reset_integral", False)),
         )
-        return {"ok": True, "pid_kp": g["kp"], "pid_ki": g["ki"], "pid_kd": g["kd"], **bench.snapshot()}
-
-    if action == "GET_STATUS":
         return {
             "ok": True,
+            "pid_kp": g["kp"],
+            "pid_ki": g["ki"],
+            "pid_kd": g["kd"],
             **bench.snapshot(),
-            "defaults": {"kp": cfg.PID_KP, "ki": cfg.PID_KI, "kd": cfg.PID_KD},
         }
+
+    if action == "MPC_SET":
+        if bench.controller_mode != "mpc":
+            return {
+                "ok": False,
+                "error": "Bench is in PID mode — switch to MPC first",
+                **bench.snapshot(),
+            }
+        g = bench.set_mpc(
+            float(body["weight_tracking"])
+            if "weight_tracking" in body
+            else None,
+            float(body["weight_heater_chg"])
+            if "weight_heater_chg" in body
+            else None,
+            float(body["weight_overshoot"])
+            if "weight_overshoot" in body
+            else None,
+            int(body["horizon"]) if "horizon" in body else None,
+            reset=bool(body.get("reset", False)),
+        )
+        return {"ok": True, **g, **bench.snapshot()}
+
+    if action == "GET_STATUS":
+        snap = bench.snapshot()
+        defaults = _controller_defaults()
+        return {"ok": True, **snap, "defaults": defaults}
 
     return {"ok": False, "error": f"Unknown action: {action}"}
 
@@ -109,14 +163,10 @@ async def ws_bench(ws: WebSocket):
     clients.append(ws)
     try:
         bench._poll_temp()
-        g = bench.pid.get_pid_config()
         await ws.send_json(
             {
                 "type": "bench_ready",
-                "pid_kp": g["kp"],
-                "pid_ki": g["ki"],
-                "pid_kd": g["kd"],
-                "defaults": {"kp": cfg.PID_KP, "ki": cfg.PID_KI, "kd": cfg.PID_KD},
+                "defaults": _controller_defaults(),
                 **bench.snapshot(),
             }
         )

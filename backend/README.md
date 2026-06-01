@@ -27,7 +27,8 @@ Python backend for the Smart Coffee Roaster: **WebSocket API**, **hardware contr
 │  • thermocouple.py — temperature (MAX31855 raw)             │
 │  • heater.py — relay, time-proportional power               │
 │  • motor.py — fan (low-side PWM, GPIO 12)                   │
-│  • pid.py — PID loop                                        │
+│  • mpc.py — MPC heater control (default)                    │
+│  • pid.py — legacy PID loop                                 │
 │  • roast_logger.py — CSV + JSON metadata                    │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -137,7 +138,7 @@ On fault:
 ### 2. Heater loop (time-proportional)
 
 - While `PREHEAT` or `ROASTING`:
-  - `output = PIDController.calculate(target_temp, current_temp)`
+  - `output = MPCController.calculate(target_temp, current_temp)` (or PID if `HEATER_CONTROLLER = "pid"`)
   - If temp > target + **15 °C** → `output = 0`
   - `await RoasterHeater.apply_output(output)` — relay on/off for **2 s** window
 - Else: `heater.stop()`
@@ -156,7 +157,8 @@ On fault:
 | `thermocouple.py` | `RoasterThermocouple` | MAX31855, EMA smoothing |
 | `heater.py` | `RoasterHeater` | SSR relay, `apply_output(percent)` |
 | `motor.py` | `RoasterMotor` | Low-side PWM fan (MOSFET/BJT on GPIO 12) |
-| `pid.py` | `PIDController` | P/I/D → 0–100% |
+| `mpc.py` | `MPCController` | Model-predictive duty 0–100% |
+| `pid.py` | `PIDController` | Legacy P/I/D → 0–100% |
 | `roast_logger.py` | `RoastDataLogger` | CSV + `_meta.json` |
 
 ## Data logging (ML)
@@ -177,7 +179,7 @@ Logs are written to `backend/logs/` (or `ROASTER_LOG_FOLDER` if set).
 
 ## Configuration
 
-Hardware and logging settings: **`config.py`** (GPIO, PID, safety limits, roast profiles). The dashboard loads profiles from **`GET /api/profiles`** (same data as `ROAST_PROFILES`).
+Hardware and logging settings: **`config.py`** (GPIO, MPC/PID, safety limits, roast profiles). MPC params match **`sami_backend/coffeeControlCodeMPC.py`**. Set `HEATER_CONTROLLER = "pid"` to revert. The dashboard loads profiles from **`GET /api/profiles`** (same data as `ROAST_PROFILES`).
 
 LCD smoke test and realtime dashboard: **`docs/lcd_st7796_test.md`**,
 **`hardware/lcd_st7796_test.py`**, and **`hardware/lcd_dashboard.py`**.

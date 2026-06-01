@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { createSensorFaultHold } from './sensorFaultHold'
 
 
-const HOST = "samimarouf:8001"
+const HOST = "samimarouf:8000"
 const BENCH_WS_URL = `ws://${HOST}/ws/bench`;
 
 const socket = ref(null)
@@ -17,9 +17,14 @@ const live = ref({
   heaterPwm: 0,
   heating: false,
   target: null,
+  controller: 'mpc',
   pidKp: 2.6,
   pidKi: 0.05,
   pidKd: 0,
+  weightTracking: 2,
+  weightHeaterChg: 0.1,
+  weightOvershoot: 5,
+  horizon: 30,
   sensorFault: null,
 })
 
@@ -32,9 +37,14 @@ function applySnapshot(msg) {
   if (msg.heater_pwm !== undefined) live.value.heaterPwm = msg.heater_pwm
   if (msg.heating !== undefined) live.value.heating = msg.heating
   if (msg.target !== undefined) live.value.target = msg.target
+  if (msg.controller !== undefined) live.value.controller = msg.controller
   if (msg.pid_kp !== undefined) live.value.pidKp = msg.pid_kp
   if (msg.pid_ki !== undefined) live.value.pidKi = msg.pid_ki
   if (msg.pid_kd !== undefined) live.value.pidKd = msg.pid_kd
+  if (msg.weight_tracking !== undefined) live.value.weightTracking = msg.weight_tracking
+  if (msg.weight_heater_chg !== undefined) live.value.weightHeaterChg = msg.weight_heater_chg
+  if (msg.weight_overshoot !== undefined) live.value.weightOvershoot = msg.weight_overshoot
+  if (msg.horizon !== undefined) live.value.horizon = msg.horizon
   if ('sensor_fault' in msg) {
     sensorFaultHold.apply((v) => { live.value.sensorFault = v }, msg.sensor_fault)
   }
@@ -121,6 +131,15 @@ export function useHardwareTest() {
     setTarget: (target) => send('HEAT_SET_TARGET', { target }),
     pidSet: (kp, ki, kd, resetIntegral = false) =>
       send('PID_SET', { kp, ki, kd, reset_integral: resetIntegral }),
+    mpcSet: (weightTracking, weightHeaterChg, weightOvershoot, horizon, reset = false) =>
+      send('MPC_SET', {
+        weight_tracking: weightTracking,
+        weight_heater_chg: weightHeaterChg,
+        weight_overshoot: weightOvershoot,
+        horizon,
+        reset,
+      }),
+    setController: (mode) => send('SET_CONTROLLER', { mode }),
     getStatus: () => send('GET_STATUS'),
   }
 }

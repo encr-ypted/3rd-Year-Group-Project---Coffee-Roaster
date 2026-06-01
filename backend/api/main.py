@@ -14,6 +14,8 @@ import config as cfg
 from hardware.controller import RoasterController
 from hardware.roast_logger import list_sessions
 
+
+PORT = 8000
 hw_manager = RoasterController()
 
 active_connections = []
@@ -138,4 +140,4 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=PORT)

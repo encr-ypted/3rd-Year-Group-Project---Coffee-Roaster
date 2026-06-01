@@ -62,6 +62,20 @@ const stateDisplay = computed(() => {
 })
 
 const rorSign = computed(() => liveData.value.ror >= 0 ? '+' : '')
+
+const rorDisplay = computed(() => {
+  const r = liveData.value.ror
+  if (!Number.isFinite(r)) return '—'
+  const abs = Math.abs(r)
+  if (abs >= 100) return `${rorSign.value}${r.toFixed(0)}`
+  return `${rorSign.value}${r.toFixed(1)}`
+})
+
+const rorValueClass = computed(() => {
+  const abs = Math.abs(liveData.value.ror)
+  if (abs >= 100) return 'text-base sm:text-lg'
+  return 'text-lg sm:text-xl'
+})
 const isIdle = computed(() => liveData.value.state === 'IDLE')
 const isRoasting = computed(() => ['PREHEAT', 'ROASTING'].includes(liveData.value.state))
 const isCooling = computed(() => liveData.value.state === 'COOLING')
@@ -263,38 +277,53 @@ const c = computed(() => isDark.value ? {
           </div>
 
           <!-- Mini Stats Row -->
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
             <!-- Target -->
-            <div class="card-base !p-4 text-center" :class="c.card">
-              <span class="lbl text-[8px]" :class="c.label">Target</span>
-              <p class="text-xl font-extrabold tabular-nums mt-1.5" :class="c.value">
-                {{ liveData.targetTemp.toFixed(0) }}<span class="text-[10px] font-semibold" :class="c.unit">°</span>
-              </p>
+            <div
+              class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0"
+              :class="c.card"
+            >
+              <span class="lbl text-[8px] shrink-0" :class="c.label">Target</span>
+              <div class="mt-1.5 flex flex-col items-center leading-none min-w-0 w-full">
+                <span class="text-lg sm:text-xl font-extrabold tabular-nums" :class="c.value">
+                  {{ liveData.targetTemp.toFixed(0) }}
+                </span>
+                <span class="text-[9px] font-semibold mt-0.5" :class="c.unit">°C</span>
+              </div>
             </div>
 
             <!-- RoR -->
-            <div class="card-base !p-4 text-center" :class="c.card">
-              <span class="lbl text-[8px]" :class="c.label">RoR</span>
-              <p
-                class="text-xl font-extrabold tabular-nums mt-1.5"
-                :class="liveData.ror >= 0 ? c.rorPos : c.rorNeg"
-              >
-                {{ rorSign }}{{ liveData.ror.toFixed(1) }}<span class="text-[10px] font-semibold" :class="c.unit">°/m</span>
-              </p>
+            <div
+              class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0"
+              :class="c.card"
+            >
+              <span class="lbl text-[8px] shrink-0" :class="c.label">RoR</span>
+              <div class="mt-1.5 flex flex-col items-center leading-none min-w-0 w-full max-w-full">
+                <span
+                  class="font-extrabold tabular-nums max-w-full truncate px-0.5"
+                  :class="[rorValueClass, liveData.ror >= 0 ? c.rorPos : c.rorNeg]"
+                >
+                  {{ rorDisplay }}
+                </span>
+                <span class="text-[9px] font-semibold mt-0.5 shrink-0" :class="c.unit">°/min</span>
+              </div>
             </div>
 
             <!-- State -->
-            <div class="card-base !p-4 flex flex-col items-center justify-center" :class="c.card">
-              <span class="lbl text-[8px] mb-1.5" :class="c.label">State</span>
+            <div
+              class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0 w-full"
+              :class="c.card"
+            >
+              <span class="lbl text-[8px] shrink-0" :class="c.label">State</span>
               <span
-                class="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded-full text-[9px] sm:text-[10px] font-bold tracking-wide"
+                class="mt-1.5 inline-flex w-full max-w-full items-center justify-center gap-1 px-1.5 py-1 rounded-full text-[8px] sm:text-[9px] font-bold leading-tight"
                 :class="stateDisplay.pill"
               >
                 <span
-                  class="w-1.5 h-1.5 rounded-full"
+                  class="w-1.5 h-1.5 rounded-full shrink-0"
                   :class="[stateDisplay.dot, stateDisplay.pulse && 'animate-pulse']"
                 />
-                {{ stateDisplay.label }}
+                <span class="truncate">{{ stateDisplay.label }}</span>
               </span>
             </div>
           </div>

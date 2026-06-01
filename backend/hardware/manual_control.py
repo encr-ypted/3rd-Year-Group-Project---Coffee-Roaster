@@ -1,5 +1,5 @@
 """
-Verified hardware bench — GPIO wiring and PID checks.
+Verified hardware bench — GPIO wiring and heater control checks.
 
 Run:  python api/hardware_test.py   (port 8001)
 Do not run api/main.py at the same time.
@@ -9,8 +9,8 @@ import asyncio
 
 import config as cfg
 from hardware.heater import RoasterHeater
+from hardware.heater_control import create_heater_controller
 from hardware.motor import RoasterMotor
-from hardware.pid import PIDController
 from hardware.thermocouple import RoasterThermocouple, read_thermocouple
 
 
@@ -27,7 +27,10 @@ class HardwareTestBench:
 
         self.heating = False
         self.target_c = 0.0
-        self.pid = PIDController()
+        self.controller_mode = getattr(
+            cfg, "BENCH_DEFAULT_CONTROLLER", cfg.HEATER_CONTROLLER
+        ).lower()
+        self.heater_controller = create_heater_controller(self.controller_mode)
 
         self._thermocouple = RoasterThermocouple()
         self._heater = RoasterHeater()
@@ -46,7 +49,29 @@ class HardwareTestBench:
         self.fan_pwm = 0
 
     def set_pid(self, kp, ki, kd, reset=False):
-        return self.pid.set_gains(kp, ki, kd, reset=reset)
+        ctrl = self.heater_controller
+        if hasattr(ctrl, "set_gains"):
+            return ctrl.set_gains(kp, ki, kd, reset=reset)
+        return ctrl.get_mpc_config()
+
+    def set_mpc(
+        self,
+        weight_tracking=None,
+        weight_heater_chg=None,
+        weight_overshoot=None,
+        horizon=None,
+        reset=False,
+    ):
+        ctrl = self.heater_controller
+        if hasattr(ctrl, "set_params"):
+            return ctrl.set_params(
+                weight_tracking=weight_tracking,
+                weight_heater_chg=weight_heater_chg,
+                weight_overshoot=weight_overshoot,
+                horizon=horizon,
+                reset=reset,
+            )
+        return ctrl.get_pid_config()
 
     def set_fan(self, percent):
         pct = max(0.0, min(100.0, percent))
@@ -65,7 +90,7 @@ class HardwareTestBench:
         self.stop_heat()
         self._heater.clear_halt()
         self.target_c = max(20.0, min(float(target_c), cfg.MAX_SAFE_TEMP_C - 5.0))
-        self.pid.reset()
+        self.heater_controller.reset()
         self.heating = True
         self._heat_task = asyncio.create_task(self._heat_loop())
         return self.target_c
@@ -86,7 +111,7 @@ class HardwareTestBench:
     def _heater_duty(self, temp):
         if temp > self.target_c + cfg.OVERSHOOT_CUTOFF_C:
             return 0.0
-        return self.pid.calculate(self.target_c, temp)
+        return self.heater_controller.calculate(self.target_c, temp)
 
     async def _heat_loop(self):
         owner = asyncio.current_task()
@@ -116,9 +141,7 @@ class HardwareTestBench:
             self.heating = False
 
     def snapshot(self):
-        pid_config = self.pid.get_pid_config()
-
-        return {
+        payload = {
             "type": "bench_telemetry",
             "temp": round(self.temp_c, 1) if self.temp_c is not None else None,
             "sensor_fault": self.sensor_fault,
@@ -126,10 +149,17 @@ class HardwareTestBench:
             "heater_pwm": self.heater_pwm,
             "heating": self.heating,
             "target": round(self.target_c, 1) if self.heating else None,
-            "pid_kp": pid_config["kp"],
-            "pid_ki": pid_config["ki"],
-            "pid_kd": pid_config["kd"],
+            "controller": self.controller_mode,
         }
+        ctrl = self.heater_controller
+        if hasattr(ctrl, "get_mpc_config"):
+            payload.update(ctrl.get_mpc_config())
+        elif hasattr(ctrl, "get_pid_config"):
+            g = ctrl.get_pid_config()
+            payload["pid_kp"] = g["kp"]
+            payload["pid_ki"] = g["ki"]
+            payload["pid_kd"] = g["kd"]
+        return payload
 
     def _poll_temp(self):
         try:

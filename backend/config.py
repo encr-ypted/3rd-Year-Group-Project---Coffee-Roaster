@@ -16,7 +16,8 @@ MAX_SAFE_TEMP_C = 250.0
 OVERSHOOT_CUTOFF_C = 15.0
 PREHEAT_THRESHOLD_C = 150.0
 
-COOL_DOWN_TEMP_C = 34.0
+#Fan stays on until it cools till this temperature after a roast
+COOL_DOWN_TEMP_C = 33
 
 # GPIO (BCM pins for gpiozero)
 HEATER_GPIO = 18
@@ -37,7 +38,13 @@ FAN_RAMP_STEP_DELAY_S = 0.12
 # Thermocouple (MAX31855) — raw reading only (no software smoothing)
 THERMOCOUPLE_STARTUP_DELAY_S = 0.5
 
-# PID
+# Main roast API (api/main.py): "mpc" (default) or "pid"
+HEATER_CONTROLLER = "pid"
+
+# Hardware bench initial mode (switchable from the bench UI without restart)
+BENCH_DEFAULT_CONTROLLER = "mpc"
+
+# PID (legacy — set HEATER_CONTROLLER = "pid" to use)
 PID_KP = 1.8
 PID_KI = 0.09
 PID_KD = 0
@@ -45,7 +52,21 @@ PID_OUT_MIN = 0.0
 PID_OUT_MAX = 100.0
 PID_INTEGRAL_LIMIT = 500.0
 
-# Roast profiles — single source of truth for UI + PID target (°C)
+# MPC — first-order roast model + duty search (sami_backend/coffeeControlCodeMPC.py)
+MPC_AMBIENT_C = 25.0
+MPC_MODEL_A = 0.9555
+MPC_MODEL_B = 0.1173
+MPC_PREDICTION_HORIZON = 30
+MPC_DUTY_STEP = 1
+MPC_WEIGHT_TRACKING = 3.0
+MPC_WEIGHT_HEATER_CHG = 0.1
+MPC_WEIGHT_OVERSHOOT = 5.0
+MPC_OVERSHOOT_BAND_C = 10.0
+MPC_UNSAFE_PENALTY = 100000.0
+MPC_OUT_MIN = 0.0
+MPC_OUT_MAX = 100.0
+
+# Roast profiles — single source of truth for UI + controller target (°C)
 ROAST_PROFILES = {
     "light": {
         "target_c": 196.0,

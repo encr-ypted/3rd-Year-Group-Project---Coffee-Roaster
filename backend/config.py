@@ -27,8 +27,12 @@ THERMOCOUPLE_CS_GPIO = 8
 THERMOCOUPLE_SCLK_GPIO = 11
 THERMOCOUPLE_DO_GPIO = 9
 
-# Fan (low-side PWM — active_high=False in RoasterMotor)
+# Fan (low-side PWM duty 0.0–1.0; active_high=False in RoasterMotor)
 FAN_DEFAULT_SPEED = 1.0
+
+# Soft-start: ramp PWM in steps when the fan turns on (set FAN_RAMP_STEPS = 0 to disable)
+FAN_RAMP_STEPS = 15
+FAN_RAMP_STEP_DELAY_S = 0.12
 
 # Thermocouple (MAX31855) — raw reading only (no software smoothing)
 THERMOCOUPLE_STARTUP_DELAY_S = 0.5

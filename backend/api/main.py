@@ -84,8 +84,43 @@ async def websocket_endpoint(websocket: WebSocket):
                 hw_manager.start_roast(data.get("profile_id", "default"))
             elif action == "STOP_ROAST":
                 hw_manager.stop_roast()
+            elif action == "RESUME_ROAST":
+                ok = hw_manager.resume_roast()
+                await websocket.send_json(
+                    {"type": "roast_action", "action": action, "ok": ok}
+                )
+            elif action == "FINISH_ROAST":
+                ok = hw_manager.finish_roast()
+                await websocket.send_json(
+                    {"type": "roast_action", "action": action, "ok": ok}
+                )
             elif action == "E_STOP":
                 hw_manager.emergency_stop()
+            elif action in ("TEST_SPIN", "TEST_SPIN_START", "TEST_SPIN_STOP"):
+                if action == "TEST_SPIN":
+                    enable = data.get("enable")
+                    if enable is None:
+                        enable = not hw_manager._test_spin_active
+                    ok = (
+                        hw_manager.start_test_spin()
+                        if enable
+                        else hw_manager.stop_test_spin()
+                    )
+                    action = "TEST_SPIN"
+                elif action == "TEST_SPIN_START":
+                    ok = hw_manager.start_test_spin()
+                else:
+                    ok = hw_manager.stop_test_spin()
+                await websocket.send_json(
+                    {
+                        "type": "roast_action",
+                        "action": action,
+                        "ok": ok,
+                        "test_spin": hw_manager._test_spin_active,
+                        "fan_pwm": hw_manager.fan_pwm,
+                        "state": hw_manager.state,
+                    }
+                )
             elif action == "HEATER_CLEAR_HALT":
                 hw_manager.clear_heater_halt()
                 await websocket.send_json(

@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { createSensorFaultHold } from './sensorFaultHold'
 
 
 const HOST = "samimarouf:8001"
@@ -19,9 +20,11 @@ const live = ref({
   pidKp: 2.6,
   pidKi: 0.05,
   pidKd: 0,
+  sensorFault: null,
 })
 
 let reconnectTimer = null
+const sensorFaultHold = createSensorFaultHold()
 
 function applySnapshot(msg) {
   if (msg.temp !== undefined) live.value.temp = msg.temp
@@ -32,6 +35,9 @@ function applySnapshot(msg) {
   if (msg.pid_kp !== undefined) live.value.pidKp = msg.pid_kp
   if (msg.pid_ki !== undefined) live.value.pidKi = msg.pid_ki
   if (msg.pid_kd !== undefined) live.value.pidKd = msg.pid_kd
+  if ('sensor_fault' in msg) {
+    sensorFaultHold.apply((v) => { live.value.sensorFault = v }, msg.sensor_fault)
+  }
   lastTelemetryAt.value = Date.now()
 }
 

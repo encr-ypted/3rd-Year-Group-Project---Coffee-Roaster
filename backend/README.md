@@ -68,7 +68,9 @@ Dashboard WebSocket: `ws://127.0.0.1:8000/ws/telemetry`
 | Action | JSON | Effect |
 |--------|------|--------|
 | Start roast | `{"action":"START_ROAST","profile_id":"medium"}` | `PREHEAT`, logging, fan on |
-| Stop & cool | `{"action":"STOP_ROAST"}` | `COOLING`, heater off, fan on |
+| Stop & cool | `{"action":"STOP_ROAST"}` | `COOLING`, heater off, fan on, log still open |
+| Resume | `{"action":"RESUME_ROAST"}` | Back to preheat/roast, same log file |
+| Finish now | `{"action":"FINISH_ROAST"}` | Save log immediately, keep cooling to 34°C |
 | Emergency | `{"action":"E_STOP"}` | `IDLE`, heater off, fan 100% |
 | State sync | `{"action":"GET_STATE"}` | Reply with current `state` |
 

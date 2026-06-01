@@ -9,6 +9,12 @@
     "stop_roast": {
       "action": "STOP_ROAST"
     },
+    "resume_roast": {
+      "action": "RESUME_ROAST"
+    },
+    "finish_roast": {
+      "action": "FINISH_ROAST"
+    },
     "emergency_stop": {
       "action": "E_STOP"
     },

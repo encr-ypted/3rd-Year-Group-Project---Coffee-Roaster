@@ -25,6 +25,11 @@ class RoasterHeater:
     def halted(self):
         return self._halt
 
+    def off(self):
+        """Relay off without safety latch (normal idle / cooling)."""
+        self._relay.off()
+        self._output = 0.0
+
     def stop(self):
         self.halt()
 

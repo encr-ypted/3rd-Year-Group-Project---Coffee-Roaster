@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "@nuxt/ui";
 
+html,
+body {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
 @theme {
   --color-gold-50: #fdf8ef;
   --color-gold-100: #f8ecda;

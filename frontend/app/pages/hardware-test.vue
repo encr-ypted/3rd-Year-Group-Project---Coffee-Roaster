@@ -50,14 +50,16 @@ const statusText = computed(() => {
 </script>
 
 <template>
-  <div class="min-h-screen coffee-dark-bg text-zinc-200">
+  <div class="min-h-screen w-full max-w-full overflow-x-clip coffee-dark-bg text-zinc-200">
     <header class="border-b border-white/[0.06] bg-[#141210]/90 sticky top-0 z-10">
-      <div class="max-w-lg mx-auto px-5 py-4 flex items-center justify-between">
-        <div>
+      <div class="max-w-lg mx-auto px-5 py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
+        <div class="min-w-0">
           <h1 class="text-lg font-semibold text-white">Hardware bench</h1>
-          <p class="text-xs text-zinc-500">Port 8001 · <code class="text-zinc-400">python api/hardware_test.py</code></p>
+          <p class="text-xs text-zinc-500 break-words">
+            Port 8001 · <code class="text-zinc-400 break-all">python api/hardware_test.py</code>
+          </p>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3 shrink-0">
           <span
             class="text-xs px-2.5 py-1 rounded-full border"
             :class="connected ? 'border-emerald-500/40 text-emerald-400' : 'border-zinc-600 text-zinc-500'"
@@ -72,6 +74,12 @@ const statusText = computed(() => {
     <main class="max-w-lg mx-auto px-5 py-6 space-y-5">
       <p v-if="connectError" class="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
         {{ connectError }}
+      </p>
+      <p
+        v-else-if="live.sensorFault"
+        class="text-sm text-amber-300 bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3"
+      >
+        Thermocouple: {{ live.sensorFault }}
       </p>
 
       <section class="rounded-2xl border border-white/[0.06] bg-[#1a1714] p-5">

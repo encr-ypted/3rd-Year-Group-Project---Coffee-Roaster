@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { createSensorFaultHold } from './sensorFaultHold';
 
 const HOST = "samimarouf:8000"
 const API_BASE = `http://${HOST}`;
@@ -26,9 +27,13 @@ const liveData = ref({
     fanPwm: 0,
     state: 'IDLE',
     heaterHalted: false,
+    canResume: false,
+    sensorFault: null,
+    testSpin: false,
 });
 
 const roastDataPoints = ref([]);
+const sensorFaultHold = createSensorFaultHold();
 
 const sendJson = (payload) => {
     if (!socket.value || socket.value.readyState !== WebSocket.OPEN) return false;
@@ -88,15 +93,46 @@ export const useCoffeeRoaster = () => {
                         fanPwm: message.fan_pwm,
                         state: message.state,
                         heaterHalted: message.heater_halted ?? liveData.value.heaterHalted,
+                        canResume: message.can_resume ?? false,
+                        testSpin:
+                            message.test_spin !== undefined
+                                ? message.test_spin
+                                : liveData.value.testSpin,
                     };
+                    sensorFaultHold.apply(
+                        (v) => { liveData.value.sensorFault = v },
+                        message.sensor_fault ?? null,
+                    );
 
-                    if (message.state !== 'IDLE') {
+                    if (message.state !== 'IDLE' && message.temp != null) {
                         roastDataPoints.value.push({ ...liveData.value });
                     }
                 } else if (message.type === 'system_state') {
                     liveData.value.state = message.state;
                 } else if (message.type === 'heater_status') {
                     liveData.value.heaterHalted = message.heater_halted ?? false;
+                } else if (message.type === 'roast_action') {
+                    if (message.test_spin !== undefined) {
+                        liveData.value.testSpin = message.test_spin;
+                    }
+                    if (message.fan_pwm !== undefined) {
+                        liveData.value.fanPwm = message.fan_pwm;
+                    }
+                    if (message.state !== undefined) {
+                        liveData.value.state = message.state;
+                    }
+                    if (
+                        message.action === 'TEST_SPIN'
+                        || message.action === 'TEST_SPIN_START'
+                        || message.action === 'TEST_SPIN_STOP'
+                    ) {
+                        if (!message.ok) {
+                            lastError.value =
+                                'Test spin only works when the roaster is idle';
+                        } else {
+                            lastError.value = null;
+                        }
+                    }
                 } else if (message.type === 'error') {
                     lastError.value = message.msg;
                 }
@@ -131,9 +167,27 @@ export const useCoffeeRoaster = () => {
         sendJson({ action: 'STOP_ROAST' });
     };
 
+    const resumeRoast = () => {
+        if (!isConnected.value) return;
+        sendJson({ action: 'RESUME_ROAST' });
+    };
+
+    const finishRoast = () => {
+        if (!isConnected.value) return;
+        sendJson({ action: 'FINISH_ROAST' });
+    };
+
     const emergencyStop = () => {
         if (!isConnected.value) return;
         sendJson({ action: 'E_STOP' });
+    };
+
+    const toggleTestSpin = () => {
+        if (!isConnected.value) return;
+        sendJson({
+            action: 'TEST_SPIN',
+            enable: !liveData.value.testSpin,
+        });
     };
 
     const clearHeaterHalt = () => {
@@ -157,7 +211,10 @@ export const useCoffeeRoaster = () => {
         roastDataPoints,
         startRoast,
         stopRoast,
+        resumeRoast,
+        finishRoast,
         emergencyStop,
+        toggleTestSpin,
         clearHeaterHalt,
         getSystemState,
     };

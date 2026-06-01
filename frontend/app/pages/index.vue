@@ -6,12 +6,16 @@ const {
   loadProfiles,
   isConnected,
   liveData,
+  roastDataPoints,
   roastProfiles,
   profilesLoaded,
   startRoast,
   stopRoast,
+  resumeRoast,
+  finishRoast,
   emergencyStop,
-  clearHeaterHalt,
+  toggleTestSpin,
+  lastError,
 } = useCoffeeRoaster()
 
 const isDark = ref(true)
@@ -40,7 +44,9 @@ const tempMin = 20
 const tempMax = 230
 
 const progressPercent = computed(() => {
-  return Math.min(100, Math.max(0, ((liveData.value.temp - tempMin) / (tempMax - tempMin)) * 100))
+  const t = liveData.value.temp
+  if (t == null) return 0
+  return Math.min(100, Math.max(0, ((t - tempMin) / (tempMax - tempMin)) * 100))
 })
 
 const stateDisplay = computed(() => {
@@ -57,7 +63,9 @@ const stateDisplay = computed(() => {
 
 const rorSign = computed(() => liveData.value.ror >= 0 ? '+' : '')
 const isIdle = computed(() => liveData.value.state === 'IDLE')
-const isActive = computed(() => ['PREHEAT', 'ROASTING', 'COOLING'].includes(liveData.value.state))
+const isRoasting = computed(() => ['PREHEAT', 'ROASTING'].includes(liveData.value.state))
+const isCooling = computed(() => liveData.value.state === 'COOLING')
+const canResume = computed(() => isCooling.value && liveData.value.canResume)
 
 // Theme color map — keeps the template clean
 const c = computed(() => isDark.value ? {
@@ -140,15 +148,15 @@ const c = computed(() => isDark.value ? {
 </script>
 
 <template>
-  <div :class="c.page" class="min-h-screen transition-colors duration-500">
+  <div :class="c.page" class="min-h-screen w-full max-w-full overflow-x-clip transition-colors duration-500">
 
     <!-- Amber accent line -->
     <div class="h-[3px] bg-gradient-to-r from-gold-700 via-gold-400 to-gold-700" />
 
     <!-- ============================== HEADER ============================== -->
     <header :class="c.header" class="transition-colors duration-500">
-      <div class="max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 py-5 flex items-center justify-between">
-        <div class="flex items-center gap-4">
+      <div class="max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 py-5 flex items-center justify-between gap-3 min-w-0">
+        <div class="flex items-center gap-3 sm:gap-4 min-w-0 shrink">
           <div class="w-11 h-11 rounded-2xl flex items-center justify-center" :class="c.logoBg">
             <Icon name="lucide:coffee" class="w-5 h-5" :class="c.logoClr" />
           </div>
@@ -160,7 +168,7 @@ const c = computed(() => isDark.value ? {
           </div>
         </div>
 
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 sm:gap-3 shrink-0">
           <NuxtLink
             to="/hardware-test"
             class="hidden sm:inline-flex text-[11px] font-semibold px-3 py-2 rounded-xl border transition-colors"
@@ -193,18 +201,28 @@ const c = computed(() => isDark.value ? {
       </div>
     </header>
 
-    <!-- Ambient glow (dark only) -->
-    <div
-      v-if="isDark"
-      class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gold-500/[0.02] rounded-full blur-3xl pointer-events-none"
-    />
-
     <!-- ============================== MAIN — SIDEBAR LAYOUT ============================== -->
-    <main class="relative max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 py-8">
-      <div class="xl:grid xl:grid-cols-[320px_1fr] xl:gap-7 space-y-6 xl:space-y-0">
+    <main class="relative max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 py-8 overflow-x-clip">
+      <p
+        v-if="lastError"
+        class="relative mb-5 text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3"
+      >
+        {{ lastError }}
+      </p>
+
+      <!-- Ambient glow (dark only) — clipped to main width -->
+      <div
+        v-if="isDark"
+        class="pointer-events-none absolute inset-x-0 top-0 h-[400px] overflow-hidden"
+        aria-hidden="true"
+      >
+        <div class="absolute left-1/2 top-0 -translate-x-1/2 w-full max-w-3xl h-full bg-gold-500/[0.02] rounded-full blur-3xl" />
+      </div>
+
+      <div class="relative xl:grid xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)] xl:gap-7 space-y-6 xl:space-y-0 min-w-0">
 
         <!-- ==================== LEFT SIDEBAR ==================== -->
-        <aside class="xl:sticky xl:top-8 xl:self-start space-y-4">
+        <aside class="xl:sticky xl:top-8 xl:self-start space-y-4 min-w-0">
 
           <!-- Hero Temperature Card -->
           <div class="card-base" :class="c.card">
@@ -216,8 +234,14 @@ const c = computed(() => isDark.value ? {
               </div>
             </div>
 
-            <p class="text-[3.25rem] leading-none font-extrabold tracking-tighter tabular-nums" :class="c.value">
-              {{ liveData.temp.toFixed(1) }}<span class="text-lg font-semibold ml-1" :class="c.unit">°C</span>
+            <p class="text-[2.75rem] sm:text-[3.25rem] leading-none font-extrabold tracking-tighter tabular-nums" :class="c.value">
+              {{ liveData.temp != null ? liveData.temp.toFixed(1) : '—' }}<span class="text-lg font-semibold ml-1" :class="c.unit">°C</span>
+            </p>
+            <p
+              v-if="liveData.sensorFault"
+              class="mt-2 text-xs font-medium text-amber-400/90 leading-snug"
+            >
+              Thermocouple: {{ liveData.sensorFault }}
             </p>
 
             <!-- Integrated progress gauge -->
@@ -263,7 +287,7 @@ const c = computed(() => isDark.value ? {
             <div class="card-base !p-4 flex flex-col items-center justify-center" :class="c.card">
               <span class="lbl text-[8px] mb-1.5" :class="c.label">State</span>
               <span
-                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide"
+                class="inline-flex max-w-full items-center gap-1.5 px-2 py-1 rounded-full text-[9px] sm:text-[10px] font-bold tracking-wide"
                 :class="stateDisplay.pill"
               >
                 <span
@@ -318,6 +342,27 @@ const c = computed(() => isDark.value ? {
             <!-- Buttons -->
             <div class="space-y-2">
               <button
+                v-if="isIdle"
+                :disabled="!isConnected"
+                :class="[
+                  c.ringOff,
+                  liveData.testSpin
+                    ? 'bg-sky-700 hover:bg-sky-600 ring-2 ring-sky-400/40'
+                    : 'bg-sky-600 hover:bg-sky-500 shadow-sky-900/30',
+                ]"
+                class="ctrl-btn text-white shadow-lg disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none
+                       focus-visible:ring-sky-500"
+                @click="toggleTestSpin()"
+              >
+                <Icon name="lucide:wind" class="w-4 h-4" />
+                {{ liveData.testSpin ? 'Stop test spin' : 'Test spin' }}
+              </button>
+              <p v-if="isIdle" class="text-[9px] text-center -mt-1" :class="c.profLbl">
+                Fan ramps on — check beans are tumbling before you roast
+              </p>
+
+              <button
+                v-if="!isCooling"
                 :disabled="!isIdle || !isConnected || !selectedProfile"
                 :class="c.ringOff"
                 class="ctrl-btn bg-emerald-600 hover:bg-emerald-500
@@ -330,7 +375,8 @@ const c = computed(() => isDark.value ? {
               </button>
 
               <button
-                :disabled="!isActive || !isConnected"
+                v-if="isRoasting"
+                :disabled="!isConnected"
                 :class="[c.stopBtn, c.ringOff]"
                 class="ctrl-btn text-white
                        disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none
@@ -340,22 +386,35 @@ const c = computed(() => isDark.value ? {
                 <Icon name="lucide:square" class="w-4 h-4" />
                 Stop &amp; Cool
               </button>
+
+              <template v-if="canResume">
+                <button
+                  :disabled="!isConnected"
+                  :class="c.ringOff"
+                  class="ctrl-btn bg-sky-600 hover:bg-sky-500 text-white
+                         focus-visible:ring-sky-500 disabled:opacity-30"
+                  @click="resumeRoast()"
+                >
+                  <Icon name="lucide:play" class="w-4 h-4" />
+                  Resume roast
+                </button>
+                <button
+                  :disabled="!isConnected"
+                  :class="c.ringOff"
+                  class="ctrl-btn bg-amber-700 hover:bg-amber-600 text-white
+                         focus-visible:ring-amber-500 disabled:opacity-30"
+                  @click="finishRoast()"
+                >
+                  <Icon name="lucide:save" class="w-4 h-4" />
+                  Finish now
+                </button>
+                <p class="text-[9px] text-center" :class="c.profLbl">
+                  Finish now saves the log; fan stays on until cool-down completes
+                </p>
+              </template>
             </div>
 
             <div class="mt-4 pt-4 space-y-3" :class="'border-t ' + c.divider">
-              <div
-                v-if="liveData.heaterHalted"
-                class="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5"
-              >
-                <p class="text-[10px] text-amber-200 mb-2">Heater latched off — clear before next roast</p>
-                <button
-                  type="button"
-                  class="w-full py-2 rounded-lg text-xs font-semibold bg-amber-600 text-white hover:bg-amber-500"
-                  @click="clearHeaterHalt()"
-                >
-                  Clear heater halt
-                </button>
-              </div>
               <button
                 :class="c.estopExtra"
                 class="w-full py-3.5 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98]
@@ -375,7 +434,7 @@ const c = computed(() => isDark.value ? {
         </aside>
 
         <!-- ==================== RIGHT MAIN CONTENT ==================== -->
-        <div class="space-y-5">
+        <div class="space-y-5 min-w-0">
 
           <!-- Chart -->
           <div class="card-base" :class="c.card">
@@ -390,20 +449,22 @@ const c = computed(() => isDark.value ? {
               </div>
             </div>
 
-            <div
-              id="roast-chart-container"
-              class="relative w-full rounded-2xl flex flex-col items-center justify-center"
-              :class="c.chartArea"
-              style="min-height: 440px"
-            >
-              <div class="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" :class="c.chartBox">
-                <Icon name="lucide:bar-chart-2" class="w-6 h-6" :class="c.chartTxt" />
-              </div>
-              <p class="text-xs font-semibold" :class="c.chartTxt">Chart.js canvas will render here</p>
-              <p class="text-[10px] mt-1.5" :class="c.chartDim">
-                Inject <code class="font-mono" :class="c.chartTxt">&lt;canvas&gt;</code> into
-                <code class="font-mono" :class="c.chartTxt">#roast-chart-container</code>
-              </p>
+            <div class="rounded-2xl overflow-hidden" :class="c.chartArea">
+              <ClientOnly>
+                <RoastChart
+                  :points="roastDataPoints"
+                  :target="liveData.targetTemp"
+                  :dark="isDark"
+                />
+                <template #fallback>
+                  <div
+                    class="flex items-center justify-center text-xs text-zinc-500"
+                    style="min-height: 440px"
+                  >
+                    Loading chart…
+                  </div>
+                </template>
+              </ClientOnly>
             </div>
           </div>
 
@@ -411,7 +472,7 @@ const c = computed(() => isDark.value ? {
           <div class="xl:hidden card-base" :class="c.card">
             <div class="glow-line" :class="c.glowVia" />
 
-            <div class="sm:grid sm:grid-cols-[1fr_auto] sm:gap-6">
+            <div class="sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:gap-6 min-w-0">
               <!-- Profile Selector -->
               <div>
                 <label class="text-[9px] font-bold uppercase tracking-[0.15em] mb-2.5 block" :class="c.profLbl">
@@ -443,8 +504,29 @@ const c = computed(() => isDark.value ? {
               </div>
 
               <!-- Buttons stack -->
-              <div class="flex flex-col gap-2 sm:min-w-[200px]">
+              <div class="flex flex-col gap-2 min-w-0 sm:w-auto">
                 <button
+                  v-if="isIdle"
+                  :disabled="!isConnected"
+                  :class="[
+                    c.ringOff,
+                    liveData.testSpin
+                      ? 'bg-sky-700 hover:bg-sky-600 ring-2 ring-sky-400/40'
+                      : 'bg-sky-600 hover:bg-sky-500 shadow-sky-900/30',
+                  ]"
+                  class="ctrl-btn text-white shadow-lg disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none
+                         focus-visible:ring-sky-500"
+                  @click="toggleTestSpin()"
+                >
+                  <Icon name="lucide:wind" class="w-4 h-4" />
+                  {{ liveData.testSpin ? 'Stop test spin' : 'Test spin' }}
+                </button>
+                <p v-if="isIdle" class="text-[9px] text-center sm:hidden" :class="c.profLbl">
+                  Fan ramps on — check bean tumble before roasting
+                </p>
+
+                <button
+                  v-if="!isCooling"
                   :disabled="!isIdle || !isConnected || !selectedProfile"
                   :class="c.ringOff"
                   class="ctrl-btn bg-emerald-600 hover:bg-emerald-500
@@ -457,7 +539,8 @@ const c = computed(() => isDark.value ? {
                 </button>
 
                 <button
-                  :disabled="!isActive || !isConnected"
+                  v-if="isRoasting"
+                  :disabled="!isConnected"
                   :class="[c.stopBtn, c.ringOff]"
                   class="ctrl-btn text-white
                          disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none
@@ -467,23 +550,31 @@ const c = computed(() => isDark.value ? {
                   <Icon name="lucide:square" class="w-4 h-4" />
                   Stop &amp; Cool
                 </button>
+
+                <template v-if="canResume">
+                  <button
+                    :disabled="!isConnected"
+                    :class="c.ringOff"
+                    class="ctrl-btn bg-sky-600 hover:bg-sky-500 text-white focus-visible:ring-sky-500 disabled:opacity-30"
+                    @click="resumeRoast()"
+                  >
+                    <Icon name="lucide:play" class="w-4 h-4" />
+                    Resume roast
+                  </button>
+                  <button
+                    :disabled="!isConnected"
+                    :class="c.ringOff"
+                    class="ctrl-btn bg-amber-700 hover:bg-amber-600 text-white focus-visible:ring-amber-500 disabled:opacity-30"
+                    @click="finishRoast()"
+                  >
+                    <Icon name="lucide:save" class="w-4 h-4" />
+                    Finish now
+                  </button>
+                </template>
               </div>
             </div>
 
             <div class="mt-5 pt-4 space-y-3" :class="'border-t ' + c.divider">
-              <div
-                v-if="liveData.heaterHalted"
-                class="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5"
-              >
-                <p class="text-[10px] text-amber-200 mb-2">Heater latched off — clear before next roast</p>
-                <button
-                  type="button"
-                  class="w-full py-2.5 rounded-lg text-xs font-semibold bg-amber-600 text-white hover:bg-amber-500"
-                  @click="clearHeaterHalt()"
-                >
-                  Clear heater halt
-                </button>
-              </div>
               <button
                 :class="c.estopExtra"
                 class="w-full py-4 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98]
@@ -545,7 +636,7 @@ const c = computed(() => isDark.value ? {
 }
 
 .prof-btn {
-  @apply rounded-xl border px-3 py-2.5 text-left cursor-pointer
+  @apply min-w-0 rounded-xl border px-3 py-2.5 text-left cursor-pointer
          transition-all duration-150
          disabled:opacity-40 disabled:cursor-not-allowed;
 }

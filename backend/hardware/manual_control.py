@@ -20,6 +20,7 @@ class HardwareTestBench:
         self.telemetry_queue = asyncio.Queue()
 
         self.temp_c = None
+        self.sensor_fault = None
         self._last_good_temp = None
         self.fan_pwm = 0
         self.heater_pwm = 0
@@ -35,7 +36,7 @@ class HardwareTestBench:
 
     async def run(self):
         self.running = True
-        self.fan_pwm = self._fan.set_speed(cfg.FAN_DEFAULT_SPEED)
+        self.fan_pwm = self._fan.set_speed()
         asyncio.create_task(self._telemetry_loop())
 
     def close(self):
@@ -120,6 +121,7 @@ class HardwareTestBench:
         return {
             "type": "bench_telemetry",
             "temp": round(self.temp_c, 1) if self.temp_c is not None else None,
+            "sensor_fault": self.sensor_fault,
             "fan_pwm": self.fan_pwm,
             "heater_pwm": self.heater_pwm,
             "heating": self.heating,
@@ -131,11 +133,13 @@ class HardwareTestBench:
 
     def _poll_temp(self):
         try:
-            temp, _fault = read_thermocouple(self._thermocouple)
+            temp, fault = read_thermocouple(self._thermocouple)
+            self.sensor_fault = fault
             self.temp_c = temp
             if temp is not None:
                 self._last_good_temp = temp
-        except Exception:
+        except Exception as exc:
+            self.sensor_fault = str(exc)
             self.temp_c = None
 
     async def _telemetry_loop(self):

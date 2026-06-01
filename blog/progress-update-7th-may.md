@@ -84,43 +84,47 @@ At this stage, the architecture is still evolving and may change during prototyp
 
 ---
 
-# Initial MoSCoW Requirements
+# MoSCoW Requirements
 
 ## Must Have
-- Safe roasting capability
-- Accurate temperature sensing
-- Adjustable heating and airflow
-- Basic roast profile control
-- Emergency safety shutoff
+- The system must use a Raspberry Pi as the main controller.
+- The system must measure real-time temperature using a K-type thermocouple and MAX6675 or MAX31855 module.
+- The system must implement a PID control loop for thermal control.
+- The system must control heater output using an SSR or MOSFET-based power electronic switching method.
+- The system must provide basic fan or airflow operation to support bean agitation and safety.
+- The system must include safety shutdown logic for dangerous conditions.
+- The system must log roast data such as temperature, time, and heater output.
+- The system must include a basic dashboard for live monitoring.
+- The system must complete a functional demonstration roast or controlled heating test.
+- The system must include a technical report and Git repository.
 
 ## Should Have
-- Roast data logging
-- Repeatable roast presets
-- User monitoring interface
-- Improved cooling functionality
+- The system should provide an internet-accessible remote dashboard.
+- The system should provide a mobile application dashboard.
+- The dashboard should include secure access control.
+- The system should calculate and display Rate of Rise.
+- The dashboard should display roast phase indicators such as drying, Maillard, and development.
+- The system should support light, medium, and dark roast profiles.
+- The project should show clear IBM Granite usage for code optimisation, testing, documentation, and analysis.
+- The final report should include a reflection on how IBM SkillsBuild improved the development workflow.
+- The project should include safety testing and documented fault responses.
 
 ## Could Have
-- AI-assisted roast optimisation
-- Sound-based crack detection
-- Web or mobile dashboard
-- Energy usage analytics
+- The system could include machine learning-based roast suggestions.
+- The system could include automatic PID tuning support.
+- The system could store data in a cloud database.
+- The dashboard could include advanced graphs and comparison between roast curves.
+- The system could store multiple bean profiles.
+- The system could recommend future roast settings based on previous roast data.
 
 ## Won’t Have (For Now)
-- Commercial-scale roasting
-- Fully automated bean loading
-- Multi-batch automation
-
----
-
-# Initial User Journey
-
-1. User loads green coffee beans into the roaster.
-2. User selects a roast profile.
-3. Sensors monitor the roasting process.
-4. The control system adjusts heater power and airflow.
-5. Roast data is logged throughout the roast.
-6. Cooling mode activates automatically.
-7. User reviews roast results and analytics.
+- The project will not build a commercial coffee roasting product.
+- The project will not support large-batch roasting.
+- The project will not include voice assistant control.
+- The project will not create a fully automated machine learning roaster as a core requirement.
+- The project will not build a complete carbon-emissions model.
+- The project will not focus on advanced mechanical redesign unless time allows.
+- The project will not depend on cloud infrastructure for the basic system to function.
 
 ---
 
@@ -144,4 +148,6 @@ We are also evaluating:
 
 Our next development phase will include:
 
-- 
+- Component procurement and breadboard testing of the sensor/control loop.
+- Chassis modification and safety-critical wiring (AC side isolation).
+- Software development (PID tuning and web dashboard implementation).

@@ -89,7 +89,6 @@ The project is currently in the research and planning stage, and the team is pre
 ## Project Updates
 
 - [Progress Update – 7th May 2026](docs/progress-update-7th-may.md)
-- [Progress Update – 21st May 2026](docs/progress-update-21st-may.md)
 
 Future updates will be added here throughout the project lifecycle.
 

@@ -39,7 +39,7 @@ FAN_RAMP_STEP_DELAY_S = 0.12
 THERMOCOUPLE_STARTUP_DELAY_S = 0.5
 
 # Main roast API (api/main.py): "mpc" (default) or "pid"
-HEATER_CONTROLLER = "pid"
+HEATER_CONTROLLER = "mpc"
 
 # Hardware bench initial mode (switchable from the bench UI without restart)
 BENCH_DEFAULT_CONTROLLER = "mpc"
@@ -54,12 +54,12 @@ PID_INTEGRAL_LIMIT = 500.0
 
 # MPC — first-order roast model + duty search (sami_backend/coffeeControlCodeMPC.py)
 MPC_AMBIENT_C = 25.0
-MPC_MODEL_A = 0.9555
-MPC_MODEL_B = 0.1173
+MPC_MODEL_A = 0.9381
+MPC_MODEL_B = 0.1667
 MPC_PREDICTION_HORIZON = 30
 MPC_DUTY_STEP = 1
-MPC_WEIGHT_TRACKING = 3.0
-MPC_WEIGHT_HEATER_CHG = 0.1
+MPC_WEIGHT_TRACKING = 2.0
+MPC_WEIGHT_HEATER_CHG = 0.3
 MPC_WEIGHT_OVERSHOOT = 5.0
 MPC_OVERSHOOT_BAND_C = 10.0
 MPC_UNSAFE_PENALTY = 100000.0

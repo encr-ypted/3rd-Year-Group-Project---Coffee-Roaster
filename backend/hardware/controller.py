@@ -6,6 +6,7 @@ Enable on the Pi:  python api/main.py
 
 import asyncio
 import time
+import math
 from collections import deque
 
 from hardware.heater import RoasterHeater
@@ -14,6 +15,7 @@ from hardware.heater_control import create_heater_controller
 from hardware.roast_logger import RoastDataLogger
 from hardware.thermocouple import RoasterThermocouple, read_thermocouple
 import config as cfg
+
 
 
 class RoasterController:
@@ -296,8 +298,11 @@ class RoasterController:
     async def _heater_loop(self):
         while self.is_running:
             if self.state in ("PREHEAT", "ROASTING"):
+                elapsed_minutes = (time.time() - self.start_time) / 60.0
+                sigmoid_temp = 80 / (1 + math.exp(-(elapsed_minutes - 2))) + 160
+                effective_target = min(sigmoid_temp, self.target_temp)
                 output = self.heater_controller.calculate(
-                    self.target_temp, self.current_temp
+                    effective_target, self.current_temp
                 )
 
                 if self.current_temp > self.target_temp + cfg.OVERSHOOT_CUTOFF_C:

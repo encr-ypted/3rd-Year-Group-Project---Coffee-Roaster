@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { createSensorFaultHold } from './sensorFaultHold'
 
 
-const HOST = "samimarouf:8000"
+const HOST = "coffee:8000"
 const BENCH_WS_URL = `ws://${HOST}/ws/bench`;
 
 const socket = ref(null)
@@ -25,7 +25,10 @@ const live = ref({
   weightHeaterChg: 0.1,
   weightOvershoot: 5,
   horizon: 30,
+  tempAir: null,
   sensorFault: null,
+  sensorFaultBean: null,
+  sensorFaultAir: null,
 })
 
 let reconnectTimer = null
@@ -33,6 +36,10 @@ const sensorFaultHold = createSensorFaultHold()
 
 function applySnapshot(msg) {
   if (msg.temp !== undefined) live.value.temp = msg.temp
+  if (msg.temp_bean !== undefined) live.value.temp = msg.temp_bean
+  if (msg.temp_air !== undefined) live.value.tempAir = msg.temp_air
+  if (msg.sensor_fault_bean !== undefined) live.value.sensorFaultBean = msg.sensor_fault_bean
+  if (msg.sensor_fault_air !== undefined) live.value.sensorFaultAir = msg.sensor_fault_air
   if (msg.fan_pwm !== undefined) live.value.fanPwm = msg.fan_pwm
   if (msg.heater_pwm !== undefined) live.value.heaterPwm = msg.heater_pwm
   if (msg.heating !== undefined) live.value.heating = msg.heating

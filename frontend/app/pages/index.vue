@@ -7,6 +7,8 @@ const {
   isConnected,
   liveData,
   roastDataPoints,
+  roastPlan,
+  setRoastPlanFromProfile,
   roastProfiles,
   profilesLoaded,
   startRoast,
@@ -77,7 +79,16 @@ const rorValueClass = computed(() => {
   return 'text-lg sm:text-xl'
 })
 const isIdle = computed(() => liveData.value.state === 'IDLE')
+
+watch(selectedProfile, (profile) => {
+  if (isIdle.value) setRoastPlanFromProfile(profile)
+}, { immediate: true })
 const isRoasting = computed(() => ['PREHEAT', 'ROASTING'].includes(liveData.value.state))
+
+const chartTargetTemp = computed(() => {
+  if (liveData.value.targetTemp > 0) return liveData.value.targetTemp
+  return roastPlan.value?.target ?? 0
+})
 const isCooling = computed(() => liveData.value.state === 'COOLING')
 const canResume = computed(() => isCooling.value && liveData.value.canResume)
 
@@ -242,7 +253,7 @@ const c = computed(() => isDark.value ? {
           <div class="card-base" :class="c.card">
             <div class="glow-line" :class="c.glowVia" />
             <div class="flex items-center justify-between mb-2">
-              <span class="lbl" :class="c.label">Current Temp</span>
+              <span class="lbl" :class="c.label">Bean temp</span>
               <div class="icon-wrap" :class="[c.icon, c.iconHov]">
                 <Icon name="lucide:thermometer" class="w-4 h-4" :class="c.iconClr" />
               </div>
@@ -252,10 +263,20 @@ const c = computed(() => isDark.value ? {
               {{ liveData.temp != null ? liveData.temp.toFixed(1) : '—' }}<span class="text-lg font-semibold ml-1" :class="c.unit">°C</span>
             </p>
             <p
-              v-if="liveData.sensorFault"
+              v-if="liveData.tempAir != null"
+              class="mt-1 text-xs tabular-nums"
+              :class="c.secSub"
+            >
+              Chamber {{ liveData.tempAir.toFixed(1) }}°C
+              <span class="text-zinc-600"> · heater control</span>
+            </p>
+            <p
+              v-if="liveData.sensorFaultBean || liveData.sensorFaultAir"
               class="mt-2 text-xs font-medium text-amber-400/90 leading-snug"
             >
-              Thermocouple: {{ liveData.sensorFault }}
+              <span v-if="liveData.sensorFaultBean">Bean: {{ liveData.sensorFaultBean }}</span>
+              <span v-if="liveData.sensorFaultBean && liveData.sensorFaultAir"> · </span>
+              <span v-if="liveData.sensorFaultAir">Air: {{ liveData.sensorFaultAir }}</span>
             </p>
 
             <!-- Integrated progress gauge -->
@@ -283,12 +304,18 @@ const c = computed(() => isDark.value ? {
               class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0"
               :class="c.card"
             >
-              <span class="lbl text-[8px] shrink-0" :class="c.label">Target</span>
+              <span class="lbl text-[8px] shrink-0" :class="c.label">
+                {{ isRoasting ? 'Setpoint' : 'Target' }}
+              </span>
               <div class="mt-1.5 flex flex-col items-center leading-none min-w-0 w-full">
                 <span class="text-lg sm:text-xl font-extrabold tabular-nums" :class="c.value">
-                  {{ liveData.targetTemp.toFixed(0) }}
+                  {{ (isRoasting ? liveData.setpointTemp : liveData.targetTemp).toFixed(0) }}
                 </span>
-                <span class="text-[9px] font-semibold mt-0.5" :class="c.unit">°C</span>
+                <span class="text-[9px] font-semibold mt-0.5" :class="c.unit">
+                  °C<span v-if="isRoasting && liveData.targetTemp > liveData.setpointTemp">
+                    → {{ liveData.targetTemp.toFixed(0) }}
+                  </span>
+                </span>
               </div>
             </div>
 
@@ -363,7 +390,7 @@ const c = computed(() => isDark.value ? {
                   <span
                     class="text-[10px] font-bold tabular-nums"
                     :class="selectedProfile?.id === profile.id ? c.profTSel : c.profTDef"
-                  >{{ profile.temp }}°C</span>
+                  >{{ profile.temp }}°C · σ {{ profile.rampMid }}m</span>
                 </button>
               </div>
             </div>
@@ -474,7 +501,9 @@ const c = computed(() => isDark.value ? {
               </div>
               <div>
                 <h3 class="text-xs font-bold uppercase tracking-widest" :class="c.secTitle">Roast Profile</h3>
-                <p class="text-[10px] mt-0.5" :class="c.secSub">Temperature &amp; RoR over time</p>
+                <p class="text-[10px] mt-0.5" :class="c.secSub">
+                  Planned curve, bean &amp; chamber air, RoR
+                </p>
               </div>
             </div>
 
@@ -482,7 +511,9 @@ const c = computed(() => isDark.value ? {
               <ClientOnly>
                 <RoastChart
                   :points="roastDataPoints"
-                  :target="liveData.targetTemp"
+                  :target="chartTargetTemp"
+                  :plan="roastPlan"
+                  :roasting="isRoasting"
                   :dark="isDark"
                 />
                 <template #fallback>
@@ -527,7 +558,7 @@ const c = computed(() => isDark.value ? {
                     <span
                       class="text-[10px] font-bold tabular-nums"
                       :class="selectedProfile?.id === profile.id ? c.profTSel : c.profTDef"
-                    >{{ profile.temp }}°C</span>
+                    >{{ profile.temp }}°C · σ {{ profile.rampMid }}m</span>
                   </button>
                 </div>
               </div>

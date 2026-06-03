@@ -162,10 +162,16 @@ const statusText = computed(() => {
           {{ live.temp != null ? live.temp.toFixed(1) : '—' }}
           <span class="text-lg text-zinc-500 font-normal">°C</span>
         </p>
-        <p class="text-xs text-zinc-600 mt-2 tabular-nums">
-          Heater {{ live.heaterPwm }}%
-          <span v-if="live.heating && live.target"> → {{ live.target }}°C</span>
-          · Fan {{ live.fanPwm }}%
+        <p class="text-xs text-zinc-600 mt-2 tabular-nums space-y-0.5">
+          <span class="block">
+            Bean {{ live.temp != null ? live.temp.toFixed(1) : '—' }}°C
+            · Air {{ live.tempAir != null ? live.tempAir.toFixed(1) : '—' }}°C (control)
+          </span>
+          <span class="block">
+            Heater {{ live.heaterPwm }}%
+            <span v-if="live.heating && live.target"> → {{ live.target }}°C</span>
+            · Fan {{ live.fanPwm }}%
+          </span>
         </p>
       </section>
 

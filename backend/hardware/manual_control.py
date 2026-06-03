@@ -11,7 +11,7 @@ import config as cfg
 from hardware.heater import RoasterHeater
 from hardware.heater_control import create_heater_controller
 from hardware.motor import RoasterMotor
-from hardware.thermocouple import RoasterThermocouple, read_thermocouple
+from hardware.sensors import RoasterSensors
 
 
 class HardwareTestBench:
@@ -20,8 +20,11 @@ class HardwareTestBench:
         self.telemetry_queue = asyncio.Queue()
 
         self.temp_c = None
+        self.temp_air_c = None
         self.sensor_fault = None
-        self._last_good_temp = None
+        self._bean_fault = None
+        self._air_fault = None
+        self._last_good_air = None
         self.fan_pwm = 0
         self.heater_pwm = 0
 
@@ -32,7 +35,7 @@ class HardwareTestBench:
         ).lower()
         self.heater_controller = create_heater_controller(self.controller_mode)
 
-        self._thermocouple = RoasterThermocouple()
+        self._sensors = RoasterSensors()
         self._heater = RoasterHeater()
         self._fan = RoasterMotor()
         self._heat_task = None
@@ -108,26 +111,33 @@ class HardwareTestBench:
         self._heater.halt()
         self.heater_pwm = 0
 
-    def _heater_duty(self, temp):
-        if temp > self.target_c + cfg.OVERSHOOT_CUTOFF_C:
+    def _heater_duty(self, air_temp):
+        if self.temp_c is not None and self.temp_c > self.target_c + cfg.OVERSHOOT_CUTOFF_C:
             return 0.0
-        return self.heater_controller.calculate(self.target_c, temp)
+        return self.heater_controller.calculate(self.target_c, air_temp)
 
     async def _heat_loop(self):
         owner = asyncio.current_task()
         try:
             while self.heating and self.running:
                 self._poll_temp()
-                temp = self._last_good_temp
-                if temp is None:
+                air = self._last_good_air
+                if air is None:
+                    self.heater_pwm = round(
+                        await self._heater.apply_output(self.heater_pwm), 1
+                    )
                     await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
                     continue
 
-                if temp > cfg.MAX_SAFE_TEMP_C:
+                safety = air
+                if self.temp_c is not None:
+                    safety = max(air, self.temp_c)
+
+                if safety > cfg.MAX_SAFE_TEMP_C:
                     self.heating = False
                     break
 
-                duty = self._heater_duty(temp)
+                duty = self._heater_duty(air)
                 self.heater_pwm = round(await self._heater.apply_output(duty), 1)
                 if self._heater.halted:
                     await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
@@ -144,7 +154,11 @@ class HardwareTestBench:
         payload = {
             "type": "bench_telemetry",
             "temp": round(self.temp_c, 1) if self.temp_c is not None else None,
-            "sensor_fault": self.sensor_fault,
+            "temp_bean": round(self.temp_c, 1) if self.temp_c is not None else None,
+            "temp_air": round(self.temp_air_c, 1) if self.temp_air_c is not None else None,
+            "sensor_fault": self._bean_fault or self._air_fault,
+            "sensor_fault_bean": self._bean_fault,
+            "sensor_fault_air": self._air_fault,
             "fan_pwm": self.fan_pwm,
             "heater_pwm": self.heater_pwm,
             "heating": self.heating,
@@ -163,13 +177,17 @@ class HardwareTestBench:
 
     def _poll_temp(self):
         try:
-            temp, fault = read_thermocouple(self._thermocouple)
-            self.sensor_fault = fault
-            self.temp_c = temp
-            if temp is not None:
-                self._last_good_temp = temp
+            data = self._sensors.read()
+            self._bean_fault = data["bean_fault"]
+            self._air_fault = data["air_fault"]
+            self.sensor_fault = self._bean_fault or self._air_fault
+            self.temp_c = data["bean_temp"]
+            self.temp_air_c = data["air_temp"]
+            if data["air_temp"] is not None:
+                self._last_good_air = data["air_temp"]
         except Exception as exc:
             self.sensor_fault = str(exc)
+            self._bean_fault = str(exc)
             self.temp_c = None
 
     async def _telemetry_loop(self):

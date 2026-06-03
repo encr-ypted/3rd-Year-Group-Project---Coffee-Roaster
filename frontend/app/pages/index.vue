@@ -63,20 +63,10 @@ const stateDisplay = computed(() => {
   return states[liveData.value.state] || states.IDLE
 })
 
-const rorSign = computed(() => liveData.value.ror >= 0 ? '+' : '')
-
-const rorDisplay = computed(() => {
-  const r = liveData.value.ror
-  if (!Number.isFinite(r)) return '—'
-  const abs = Math.abs(r)
-  if (abs >= 100) return `${rorSign.value}${r.toFixed(0)}`
-  return `${rorSign.value}${r.toFixed(1)}`
-})
-
-const rorValueClass = computed(() => {
-  const abs = Math.abs(liveData.value.ror)
-  if (abs >= 100) return 'text-base sm:text-lg'
-  return 'text-lg sm:text-xl'
+const airTempDisplay = computed(() => {
+  const t = liveData.value.tempAir
+  if (t == null || !Number.isFinite(t)) return '—'
+  return t.toFixed(1)
 })
 const isIdle = computed(() => liveData.value.state === 'IDLE')
 
@@ -105,8 +95,6 @@ const c = computed(() => isDark.value ? {
   unit:       'text-zinc-600',
   tempLg:     'text-white',
   tempSm:     'text-zinc-600',
-  rorPos:     'text-emerald-400',
-  rorNeg:     'text-sky-400',
   icon:       'bg-[rgba(212,162,78,0.08)] border border-[rgba(212,162,78,0.1)]',
   iconHov:    'group-hover:bg-[rgba(212,162,78,0.15)]',
   iconClr:    'text-gold-400',
@@ -143,8 +131,6 @@ const c = computed(() => isDark.value ? {
   unit:       'text-stone-300',
   tempLg:     'text-stone-800',
   tempSm:     'text-stone-400',
-  rorPos:     'text-emerald-700',
-  rorNeg:     'text-sky-700',
   icon:       'bg-amber-500/10',
   iconHov:    'group-hover:bg-amber-500/15',
   iconClr:    'text-amber-600',
@@ -263,14 +249,6 @@ const c = computed(() => isDark.value ? {
               {{ liveData.temp != null ? liveData.temp.toFixed(1) : '—' }}<span class="text-lg font-semibold ml-1" :class="c.unit">°C</span>
             </p>
             <p
-              v-if="liveData.tempAir != null"
-              class="mt-1 text-xs tabular-nums"
-              :class="c.secSub"
-            >
-              Chamber {{ liveData.tempAir.toFixed(1) }}°C
-              <span class="text-zinc-600"> · heater control</span>
-            </p>
-            <p
               v-if="liveData.sensorFaultBean || liveData.sensorFaultAir"
               class="mt-2 text-xs font-medium text-amber-400/90 leading-snug"
             >
@@ -319,21 +297,28 @@ const c = computed(() => isDark.value ? {
               </div>
             </div>
 
-            <!-- RoR -->
+            <!-- Chamber (air) -->
             <div
               class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0"
               :class="c.card"
             >
-              <span class="lbl text-[8px] shrink-0" :class="c.label">RoR</span>
-              <div class="mt-1.5 flex flex-col items-center leading-none min-w-0 w-full max-w-full">
+              <span class="lbl text-[8px] shrink-0" :class="c.label">Chamber</span>
+              <div class="mt-1.5 flex flex-col items-center leading-none min-w-0 w-full">
                 <span
-                  class="font-extrabold tabular-nums max-w-full truncate px-0.5"
-                  :class="[rorValueClass, liveData.ror >= 0 ? c.rorPos : c.rorNeg]"
+                  class="text-lg sm:text-xl font-extrabold tabular-nums"
+                  :class="liveData.tempAir != null ? (isDark ? 'text-sky-400' : 'text-sky-700') : c.value"
                 >
-                  {{ rorDisplay }}
+                  {{ airTempDisplay }}
                 </span>
-                <span class="text-[9px] font-semibold mt-0.5 shrink-0" :class="c.unit">°/min</span>
+                <span class="text-[9px] font-semibold mt-0.5" :class="c.unit">°C air</span>
               </div>
+              <p
+                v-if="liveData.sensorFaultAir"
+                class="mt-1 text-[8px] text-amber-500/90 leading-tight line-clamp-2 max-w-full px-0.5"
+                :title="liveData.sensorFaultAir"
+              >
+                {{ liveData.sensorFaultAir }}
+              </p>
             </div>
 
             <!-- State -->

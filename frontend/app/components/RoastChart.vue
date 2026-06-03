@@ -10,6 +10,11 @@ import {
   Filler,
 } from 'chart.js'
 import { buildPlannedTrajectory } from '~/utils/roastRamp'
+import { clampRorPoints, emaSmooth } from '~/utils/smoothSeries'
+
+/** Display smoothing — raw telemetry is unchanged in roastDataPoints. */
+const SMOOTH_TEMP_ALPHA = 0.38
+const SMOOTH_ROR_ALPHA = 0.18
 
 Chart.register(
   LineController,
@@ -96,6 +101,11 @@ function xyPoints(points, yKey) {
     .map((p) => ({ x: p.timestamp ?? 0, y: p[yKey] }))
 }
 
+function smoothLive(series, alpha) {
+  if (series.length < 2) return series
+  return emaSmooth(series, alpha)
+}
+
 function buildDatasets(colors) {
   const datasets = []
 
@@ -130,7 +140,7 @@ function buildDatasets(colors) {
     })
   }
 
-  const bean = xyPoints(props.points, 'temp')
+  const bean = smoothLive(xyPoints(props.points, 'temp'), SMOOTH_TEMP_ALPHA)
   if (bean.length) {
     datasets.push({
       label: 'Bean',
@@ -146,7 +156,7 @@ function buildDatasets(colors) {
     })
   }
 
-  const air = xyPoints(props.points, 'tempAir')
+  const air = smoothLive(xyPoints(props.points, 'tempAir'), SMOOTH_TEMP_ALPHA)
   if (air.length) {
     datasets.push({
       label: 'Chamber (air)',
@@ -175,12 +185,13 @@ function buildDatasets(colors) {
     })
   }
 
-  const ror = props.points
+  const rorRaw = props.points
     .filter((p) => p.ror != null && Number.isFinite(p.ror))
     .map((p) => ({ x: p.timestamp ?? 0, y: p.ror }))
+  const ror = smoothLive(clampRorPoints(rorRaw), SMOOTH_ROR_ALPHA)
   if (ror.length) {
     datasets.push({
-      label: 'RoR',
+      label: 'RoR (smoothed)',
       data: ror,
       borderColor: colors.ror,
       pointRadius: 0,

@@ -487,7 +487,7 @@ const c = computed(() => isDark.value ? {
               <div>
                 <h3 class="text-xs font-bold uppercase tracking-widest" :class="c.secTitle">Roast Profile</h3>
                 <p class="text-[10px] mt-0.5" :class="c.secSub">
-                  Planned curve, bean &amp; chamber air, RoR
+                  Planned curve, bean &amp; chamber air
                 </p>
               </div>
             </div>

@@ -15,11 +15,3 @@ export function emaSmooth(points, alpha = 0.35) {
   }
   return out
 }
-
-/** Clamp wild RoR spikes before smoothing (bad early samples). */
-export function clampRorPoints(points, limit = 60) {
-  return points.map((p) => ({
-    ...p,
-    y: Math.max(-limit, Math.min(limit, p.y)),
-  }))
-}

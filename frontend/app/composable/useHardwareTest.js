@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { createSensorFaultHold } from './sensorFaultHold'
 
 
-const HOST = "coffee:8000"
+const HOST = "localhost:8000"
 const BENCH_WS_URL = `ws://${HOST}/ws/bench`;
 
 const socket = ref(null)

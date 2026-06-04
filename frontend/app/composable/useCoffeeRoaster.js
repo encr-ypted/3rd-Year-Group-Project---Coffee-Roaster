@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { createSensorFaultHold } from './sensorFaultHold';
 
-const HOST = "coffee:8000"
+const HOST = "localhost:8000"
 const API_BASE = `http://${HOST}`;
 const WS_URL = `ws://${HOST}/ws/telemetry`;
 
@@ -25,7 +25,6 @@ const liveData = ref({
     setpointTemp: 0.0,
     rampMidpointMin: 0,
     rampSteepness: 0,
-    ror: 0.0,
     heaterPwm: 0,
     fanPwm: 0,
     state: 'IDLE',
@@ -103,7 +102,6 @@ export const useCoffeeRoaster = () => {
                             message.ramp_midpoint_min ?? liveData.value.rampMidpointMin,
                         rampSteepness:
                             message.ramp_steepness ?? liveData.value.rampSteepness,
-                        ror: message.ror,
                         heaterPwm: message.heater_pwm,
                         fanPwm: message.fan_pwm,
                         state: message.state,

@@ -10,11 +10,10 @@ import {
   Filler,
 } from 'chart.js'
 import { buildPlannedTrajectory } from '~/utils/roastRamp'
-import { clampRorPoints, emaSmooth } from '~/utils/smoothSeries'
+import { emaSmooth } from '~/utils/smoothSeries'
 
 /** Display smoothing — raw telemetry is unchanged in roastDataPoints. */
 const SMOOTH_TEMP_ALPHA = 0.38
-const SMOOTH_ROR_ALPHA = 0.18
 
 Chart.register(
   LineController,
@@ -80,7 +79,6 @@ function chartColors() {
       air: '#38bdf8',
       planned: 'rgba(212,162,78,0.85)',
       profileMax: 'rgba(161,161,170,0.45)',
-      ror: '#a78bfa',
     }
   }
   return {
@@ -91,7 +89,6 @@ function chartColors() {
     air: '#0284c7',
     planned: 'rgba(180,83,9,0.75)',
     profileMax: 'rgba(120,113,108,0.5)',
-    ror: '#7c3aed',
   }
 }
 
@@ -185,23 +182,6 @@ function buildDatasets(colors) {
     })
   }
 
-  const rorRaw = props.points
-    .filter((p) => p.ror != null && Number.isFinite(p.ror))
-    .map((p) => ({ x: p.timestamp ?? 0, y: p.ror }))
-  const ror = smoothLive(clampRorPoints(rorRaw), SMOOTH_ROR_ALPHA)
-  if (ror.length) {
-    datasets.push({
-      label: 'RoR (smoothed)',
-      data: ror,
-      borderColor: colors.ror,
-      pointRadius: 0,
-      borderWidth: 1.5,
-      tension: 0.25,
-      yAxisID: 'y1',
-      order: 0,
-    })
-  }
-
   return datasets
 }
 
@@ -233,8 +213,7 @@ function buildOptions(colors) {
           },
           label: (ctx) => {
             const y = ctx.parsed.y
-            const unit = ctx.dataset.yAxisID === 'y1' ? '°/min' : '°C'
-            return `${ctx.dataset.label}: ${y?.toFixed?.(1) ?? y}${unit}`
+            return `${ctx.dataset.label}: ${y?.toFixed?.(1) ?? y}°C`
           },
         },
       },
@@ -261,12 +240,6 @@ function buildOptions(colors) {
         title: { display: true, text: 'Temperature °C', color: colors.tick, font: { size: 10 } },
         ticks: { color: colors.tick },
         grid: { color: colors.grid },
-      },
-      y1: {
-        position: 'right',
-        title: { display: true, text: 'RoR °/min', color: colors.tick, font: { size: 10 } },
-        ticks: { color: colors.tick },
-        grid: { drawOnChartArea: false },
       },
     },
   }

@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { createSensorFaultHold } from './sensorFaultHold';
 
-const HOST = "samimarouf:8000"
+const HOST = "coffee.local:8000"
 const API_BASE = `http://${HOST}`;
 const WS_URL = `ws://${HOST}/ws/telemetry`;
 

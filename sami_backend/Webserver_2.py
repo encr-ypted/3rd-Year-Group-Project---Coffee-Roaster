@@ -12,6 +12,7 @@ app = FastAPI()
 clients = []
 
 COMMAND_FILE = "roaster_command.txt"
+last_target_c = 210.0
 
 
 app.add_middleware(
@@ -24,30 +25,10 @@ app.add_middleware(
 
 
 ROAST_PROFILES = [
-    {
-        "id": "light",
-        "name": "Light",
-        "desc": "Fruity & bright",
-        "target_c": 196.0,
-    },
-    {
-        "id": "medium",
-        "name": "Medium",
-        "desc": "Balanced & smooth",
-        "target_c": 210.0,
-    },
-    {
-        "id": "medium-dark",
-        "name": "Medium-Dark",
-        "desc": "Rich & full-bodied",
-        "target_c": 220.0,
-    },
-    {
-        "id": "dark",
-        "name": "Dark",
-        "desc": "Bold & smoky",
-        "target_c": 230.0,
-    },
+    {"id": "light", "name": "Light", "desc": "Fruity & bright", "target_c": 196.0},
+    {"id": "medium", "name": "Medium", "desc": "Balanced & smooth", "target_c": 210.0},
+    {"id": "medium-dark", "name": "Medium-Dark", "desc": "Rich & full-bodied", "target_c": 220.0},
+    {"id": "dark", "name": "Dark", "desc": "Bold & smoky", "target_c": 230.0},
 ]
 
 
@@ -61,13 +42,55 @@ def write_command(command):
         file.write(command)
 
 
+def get_profile_target(profile_id):
+    profile = next(
+        (p for p in ROAST_PROFILES if p["id"] == profile_id),
+        ROAST_PROFILES[1]
+    )
+    return profile["target_c"]
+
+
 def get_latest_log_file():
     files = glob.glob("logs/roast_*.csv")
-
     if not files:
         return None
-
     return max(files, key=os.path.getmtime)
+
+
+def safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except Exception:
+        return default
+
+
+def map_state_for_frontend(state):
+    if state == "IDLE":
+        return "IDLE"
+
+    if state in [
+        "RUNNING_MPC_FAN_TEST",
+        "ABOVE_TARGET_HEATER_OFF",
+        "SENSOR_ERROR_KEEPING_DUTY",
+        "START_ROAST_SENT",
+    ]:
+        return "ROASTING"
+
+    if state in [
+        "COOLING_FROM_DASHBOARD",
+        "STOP_AND_COOL_SENT",
+    ]:
+        return "COOLING"
+
+    if state in [
+        "SAFETY_SHUTDOWN_OVERTEMP",
+        "E_STOP",
+        "ERROR",
+        "EMERGENCY_STOP_SENT",
+    ]:
+        return "ERROR"
+
+    return state
 
 
 def get_latest_row():
@@ -78,12 +101,15 @@ def get_latest_row():
             "type": "telemetry",
             "timestamp": 0,
             "temp": 0,
-            "target": 0,
+            "target": last_target_c,
             "ror": 0,
             "heater_pwm": 0,
             "fan_pwm": 0,
-            "state": "NO_LOG_FILE",
+            "state": "IDLE",
             "heater_halted": False,
+            "can_resume": False,
+            "sensor_fault": None,
+            "test_spin": False,
         }
 
     try:
@@ -94,37 +120,35 @@ def get_latest_row():
             raise RuntimeError("No CSV rows")
 
         latest = rows[-1]
+        raw_state = latest.get("state", "UNKNOWN")
+        frontend_state = map_state_for_frontend(raw_state)
 
-        temp_raw = latest.get("temp_c", 0)
-
-        try:
-            temp = float(temp_raw)
-        except Exception:
-            temp = 0.0
+        sensor_fault = None
+        if raw_state == "SENSOR_ERROR_KEEPING_DUTY":
+            sensor_fault = "Sensor fault, keeping previous duty"
 
         return {
             "type": "telemetry",
-            "timestamp": float(latest.get("time_s", 0)),
-            "temp": temp,
-            "target": float(latest.get("target_c", 0)),
+            "timestamp": safe_float(latest.get("time_s", 0)),
+            "temp": safe_float(latest.get("temp_c", 0)),
+            "target": safe_float(latest.get("target_c", last_target_c)),
             "ror": 0,
-            "heater_pwm": float(latest.get("heater_output_percent", 0)),
-            "fan_pwm": float(latest.get("fan_speed", 0)) * 100,
-            "state": latest.get("state", "UNKNOWN"),
+            "heater_pwm": safe_float(latest.get("heater_output_percent", 0)),
+            "fan_pwm": safe_float(latest.get("fan_speed", 0)) * 100,
+            "state": frontend_state,
             "heater_halted": False,
+            "can_resume": frontend_state == "COOLING",
+            "sensor_fault": sensor_fault,
+            "test_spin": False,
         }
 
     except Exception as e:
-        return {
-            "type": "error",
-            "msg": str(e),
-        }
+        return {"type": "error", "msg": str(e)}
 
 
 async def broadcaster():
     while True:
         message = get_latest_row()
-
         for ws in list(clients):
             try:
                 await ws.send_json(message)
@@ -141,13 +165,15 @@ async def startup_event():
 
 @app.websocket("/ws/telemetry")
 async def websocket_endpoint(websocket: WebSocket):
+    global last_target_c
+
     await websocket.accept()
     clients.append(websocket)
 
     try:
         await websocket.send_json({
             "type": "system_state",
-            "state": "CONNECTED_TO_CSV_BRIDGE",
+            "state": "IDLE",
         })
 
         while True:
@@ -157,28 +183,66 @@ async def websocket_endpoint(websocket: WebSocket):
             if action == "GET_STATE":
                 await websocket.send_json({
                     "type": "system_state",
-                    "state": "CSV_BRIDGE_RUNNING",
+                    "state": "IDLE",
                 })
 
             elif action == "START_ROAST":
-                write_command("RUN")
+                profile_id = data.get("profile_id", "medium")
+                last_target_c = get_profile_target(profile_id)
+
+                write_command(f"RUN,{last_target_c}")
+
                 await websocket.send_json({
-                    "type": "system_state",
-                    "state": "START_ROAST_SENT",
+                    "type": "roast_action",
+                    "action": action,
+                    "ok": True,
+                    "state": "ROASTING",
                 })
 
             elif action == "STOP_ROAST":
                 write_command("STOP")
                 await websocket.send_json({
-                    "type": "system_state",
-                    "state": "STOP_AND_COOL_SENT",
+                    "type": "roast_action",
+                    "action": action,
+                    "ok": True,
+                    "state": "COOLING",
+                })
+
+            elif action == "RESUME_ROAST":
+                write_command(f"RUN,{last_target_c}")
+                await websocket.send_json({
+                    "type": "roast_action",
+                    "action": action,
+                    "ok": True,
+                    "state": "ROASTING",
+                })
+
+            elif action == "FINISH_ROAST":
+                write_command("STOP")
+                await websocket.send_json({
+                    "type": "roast_action",
+                    "action": action,
+                    "ok": True,
+                    "state": "COOLING",
                 })
 
             elif action == "E_STOP":
                 write_command("E_STOP")
                 await websocket.send_json({
-                    "type": "system_state",
-                    "state": "EMERGENCY_STOP_SENT",
+                    "type": "roast_action",
+                    "action": action,
+                    "ok": True,
+                    "state": "ERROR",
+                })
+
+            elif action == "TEST_SPIN":
+                await websocket.send_json({
+                    "type": "roast_action",
+                    "action": action,
+                    "ok": True,
+                    "test_spin": False,
+                    "fan_pwm": 100,
+                    "state": "IDLE",
                 })
 
             elif action == "HEATER_CLEAR_HALT":

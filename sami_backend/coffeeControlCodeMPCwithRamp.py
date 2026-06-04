@@ -63,28 +63,37 @@ def fan_off():
 
 
 def fan_ramp_start():
-    print("ramping fan")
+    print("Ramping fan before heater enable...")
 
     for i in range(FAN_RAMP_STEPS + 1):
         speed = MOTOR_OFF_SPEED - ((MOTOR_OFF_SPEED - MOTOR_ON_SPEED) * (i / FAN_RAMP_STEPS))
         enable.value = speed
         motor.forward()
-        print(f"Fan speed: {speed:.2f}")
+        print(f"Fan ramp value: {speed:.2f}")
         time.sleep(FAN_RAMP_TIME_S / FAN_RAMP_STEPS)
 
     enable.value = MOTOR_ON_SPEED
-    print("Fan ramp complete")
+    print("Fan ramp complete. Heater is now allowed.")
 
 
 def read_command():
     if not os.path.exists(COMMAND_FILE):
-        return "IDLE"
+        return "IDLE", TARGET_C
 
     with open(COMMAND_FILE, "r") as file:
-        return file.read().strip()
+        text = file.read().strip()
+
+    if text.startswith("RUN,"):
+        try:
+            _, target = text.split(",")
+            return "RUN", float(target)
+        except Exception:
+            return "RUN", TARGET_C
+
+    return text, TARGET_C
 
 
-def calculate_mpc(temp_c):
+def calculate_mpc(temp_c, target_c):
     global previous_heater_output
 
     best_duty = 0.0
@@ -101,11 +110,11 @@ def calculate_mpc(temp_c):
                 + MODEL_B * duty
             )
 
-            error = TARGET_C - predicted_temp
+            error = target_c - predicted_temp
             cost += WEIGHT_TRACKING * (error ** 2)
 
-            if predicted_temp > TARGET_C + 10:
-                cost += WEIGHT_OVERSHOOT * ((predicted_temp - TARGET_C) ** 2)
+            if predicted_temp > target_c + 10:
+                cost += WEIGHT_OVERSHOOT * ((predicted_temp - target_c) ** 2)
 
             if predicted_temp > MAX_SAFE_TEMP_C:
                 cost += 100000
@@ -138,7 +147,7 @@ with open(log_file, "w", newline="") as file:
 
 print("Coffee roaster MPC + fan control started.")
 print("Dashboard controls: IDLE / RUN / STOP / E_STOP")
-print(f"Target temperature: {TARGET_C} °C")
+print(f"Default target temperature: {TARGET_C} °C")
 print(f"Logging to: {log_file}")
 
 
@@ -151,7 +160,7 @@ try:
 
     while True:
         elapsed = round(time.time() - start_time, 1)
-        command = read_command()
+        command, target_c = read_command()
 
         if command == "E_STOP":
             heater.off()
@@ -174,14 +183,14 @@ try:
                 state = "COOLING_FROM_DASHBOARD"
 
             else:
-                heater_output = calculate_mpc(temp_c)
+                heater_output = calculate_mpc(temp_c, target_c)
                 heater_output = round(heater_output, 1)
 
                 if temp_c > MAX_SAFE_TEMP_C:
                     heater_output = 0.0
                     state = "SAFETY_SHUTDOWN_OVERTEMP"
 
-                elif temp_c > TARGET_C + 15:
+                elif temp_c > target_c + 15:
                     heater_output = 0.0
                     state = "ABOVE_TARGET_HEATER_OFF"
 
@@ -197,7 +206,7 @@ try:
                 writer.writerow([
                     elapsed,
                     round(temp_c, 2),
-                    TARGET_C,
+                    target_c,
                     heater_output,
                     MOTOR_ON_SPEED,
                     state
@@ -205,7 +214,7 @@ try:
 
             print(
                 f"{elapsed}s | Temp: {temp_c:.2f} °C | "
-                f"Target: {TARGET_C:.1f} °C | "
+                f"Target: {target_c:.1f} °C | "
                 f"MPC Heater: {heater_output:.1f}% | "
                 f"Fan: {MOTOR_ON_SPEED:.1f} | {state}"
             )
@@ -234,7 +243,7 @@ try:
                 writer.writerow([
                     elapsed,
                     "NaN",
-                    TARGET_C,
+                    target_c,
                     heater_output,
                     MOTOR_ON_SPEED,
                     state

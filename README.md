@@ -12,85 +12,130 @@ The system is based on a modified fluidised bed coffee roaster using a hot-air p
 
 ## Project Goals
 
-- Develop a safe and controllable small-batch coffee roaster
-- Improve roast consistency using sensing and closed-loop control
-- Explore AI-assisted roast optimisation
-- Reduce waste caused by inconsistent roasting
-- Create an accessible and low-cost roasting platform
+* Develop a safe and controllable small-batch coffee roaster
+* Improve roast consistency using sensing and closed-loop control
+* Explore AI-assisted roast optimisation
+* Reduce waste caused by inconsistent roasting
+* Create an accessible and low-cost roasting platform
 
 ---
 
-## Current Features Under Investigation
+## Current System Features
 
 ### Sensing
-- Bean temperature sensing
-- Air temperature sensing
-- Potential airflow and power monitoring
+
+* Bean temperature sensing
+* Air temperature sensing
+* Real-time temperature monitoring
 
 ### Control
-- Adjustable fan speed
-- Adjustable heater power
-- Roast profile tracking
-- Cooling cycle control
 
-### AI / Software
-- Roast data logging
-- Roast profile recommendations
-- AI-assisted optimisation
-- Potential dashboard or web interface
+* Heater control
+* Fan speed control
+* Roast profile execution
+* Cooling functionality
+* Emergency stop functionality
+
+### User Interface
+
+* Local web-based interface
+* Real-time temperature graphing
+* Roast profile presets
+* Start Roast functionality
+* Stop & Cool functionality
+* Emergency Stop functionality
+
+### AI / Future Development
+
+* Roast data logging
+* Camera-based bean colour monitoring
+* AI-assisted roast optimisation
+* Roast profile recommendations
 
 ---
 
-## Technologies Being Explored
+## Technologies Used
 
-- Embedded systems
-- Temperature sensing
-- PWM control
-- Microcontrollers
-- Control systems
-- AI / Machine Learning
-- Data logging
-- Power electronics
+* Raspberry Pi 4
+* Embedded systems
+* Temperature sensing
+* Solid State Relay (SSR) control
+* Control systems (PID and MPC)
+* Python
+* Web-based user interfaces
+* Data logging
+* Power electronics
 
 ---
 
 ## Team Members
 
-| Name |
-|---|
-| Tayo Babs-Olugbemi |
-| Sami Marouf |
-| Rojan Ragunathan |
+| Name                |
+| ------------------- |
+| Tayo Babs-Olugbemi  |
+| Sami Marouf         |
+| Rojan Ragunathan    |
 | Patanwit Sawatyanon |
-| Yikai Su |
-| Peter Wang |
+| Yikai Su            |
+| Peter Wang          |
 
 ---
 
 ## Sustainability Focus
 
 This project aims to improve sustainability in coffee roasting by:
-- Reducing roasting waste
-- Improving roast repeatability
-- Supporting small-batch roasting
-- Exploring energy-efficient control methods
-- Increasing accessibility to roasting technology
+
+* Reducing roasting waste
+* Improving roast repeatability
+* Supporting small-batch roasting
+* Exploring energy-efficient control methods
+* Increasing accessibility to roasting technology
 
 ---
 
-# Conclusion
+## Current Project Status
 
-The Smart Coffee Roaster project combines sustainability, AI, embedded systems, and control engineering into a practical real-world application.
+The project has successfully achieved a working prototype capable of:
 
-The project is currently in the research and planning stage, and the team is preparing to begin hardware prototyping and system development.
+* Roasting coffee beans
+* Monitoring roast temperature in real time
+* Controlling heater output
+* Controlling airflow
+* Executing roast profiles
+* Performing controlled cooling
+* Providing user interaction through a graphical interface
+
+Multiple successful roast tests have been completed.
+
+Current development is focused on enclosure improvements, display integration, and future AI-assisted roasting features.
+
+---
+
+## Design Decisions
+
+### Fluidised Bed Roasting
+
+A popcorn popper platform was selected as a low-cost fluidised bed roasting solution suitable for rapid prototyping.
+
+### Custom Fan Design
+
+A custom PETG 3D-printed fan was developed to improve airflow and bean circulation within the roasting chamber.
+
+### MPC Control
+
+Initial PID control testing revealed temperature overshoot. The project has since transitioned towards Model Predictive Control (MPC) to improve temperature regulation performance.
+
+### Dual Temperature Monitoring
+
+Future development includes the use of separate bean and air temperature measurements to improve roast monitoring and control performance.
 
 ---
 
 ## Project Updates
 
-- [Progress Update – 7th May 2026](docs/progress-update-7th-may.md)
-- [Progress Update – 21st May 2026](docs/progress-update-21st-may.md)
-- [Progress Update – 7th June 2026](docs/progress-update-7th-june.md)
+* [Progress Update – 7th May 2026](blog/progress-update-7th-may.md)
+* [Progress Update – 21st May 2026](blog/progress-update-21st-may.md)
+* [Progress Update – 7th June 2026](blog/progress-update-7th-june.md)
 
 Future updates will be added here throughout the project lifecycle.
 

@@ -70,14 +70,12 @@ The system is based on a modified fluidised bed coffee roaster using a hot-air p
 
 ## Team Members
 
-| Name                |
-| ------------------- |
-| Tayo Babs-Olugbemi  |
-| Sami Marouf         |
-| Rojan Ragunathan    |
-| Patanwit Sawatyanon |
-| Yikai Su            |
-| Peter Wang          |
+- Tayo Babs-Olugbemi
+- Sami Marouf
+- Rojan Ragunathan
+- Patanwit Sawatyanon
+- Yikai Su
+- Peter Z Wang
 
 ---
 

@@ -56,14 +56,14 @@ The system is based on a modified fluidised bed coffee roaster using a hot-air p
 
 ## Team Members
 
-| Name | Role |
-|---|---|
-| [Name] | [Role] |
-| [Name] | [Role] |
-| [Name] | [Role] |
-| [Name] | [Role] |
-| [Name] | [Role] |
-| [Name] | [Role] |
+| Name |
+|---|
+| Tayo Babs-Olugbemi |
+| Sami Marouf |
+| Rojan Ragunathan |
+| Patanwit Sawatyanon |
+| Yikai Su |
+| Peter Wang |
 
 ---
 
@@ -89,6 +89,8 @@ The project is currently in the research and planning stage, and the team is pre
 ## Project Updates
 
 - [Progress Update – 7th May 2026](docs/progress-update-7th-may.md)
+- [Progress Update – 21st May 2026](docs/progress-update-21st-may.md)
+- [Progress Update – 7th June 2026](docs/progress-update-7th-june.md)
 
 Future updates will be added here throughout the project lifecycle.
 

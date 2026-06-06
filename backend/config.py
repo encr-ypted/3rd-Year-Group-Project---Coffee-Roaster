@@ -20,12 +20,14 @@ PREHEAT_THRESHOLD_C = 150.0
 COOL_DOWN_TEMP_C = 33
 
 # GPIO (BCM pins for gpiozero)
+# Heater SSR — GPIO 23 (physical pin 16). LCD backlight is GPIO 22, not 23.
 HEATER_GPIO = 23
 FAN_PWM_GPIO = 12
 FAN_PWM_FREQUENCY_HZ = 1000
 
 # MAX31855 on SPI0 — SCLK 11, MOSI 10, MISO 9 (enable: dtparam=spi=on)
-THERMOCOUPLE_CS_GPIO = 8
+# Single probe only — do not use THERMOCOUPLE_BEAN_* / THERMOCOUPLE_AIR_* (removed).
+THERMOCOUPLE_CS_GPIO = 7
 THERMOCOUPLE_SCLK_GPIO = 11
 THERMOCOUPLE_DO_GPIO = 9
 
@@ -39,7 +41,7 @@ FAN_RAMP_STEP_DELAY_S = 0.12
 # Thermocouple (MAX31855) — raw reading only (no software smoothing)
 THERMOCOUPLE_STARTUP_DELAY_S = 0.5
 
-# Main roast API (api/main.py): "mpc" (default) or "pid"
+# Main roast API (api/main.py): "mpc" or "pid"
 HEATER_CONTROLLER = "mpc"
 
 # Hardware bench initial mode (switchable from the bench UI without restart)
@@ -55,13 +57,13 @@ PID_INTEGRAL_LIMIT = 500.0
 
 # MPC — first-order roast model + duty search (sami_backend/coffeeControlCodeMPC.py)
 MPC_AMBIENT_C = 25.0
-MPC_MODEL_A = 0.9381
-MPC_MODEL_B = 0.1667
-MPC_PREDICTION_HORIZON = 30
+MPC_MODEL_A = 0.9978
+MPC_MODEL_B = 0.0058
+MPC_PREDICTION_HORIZON = 120
 MPC_DUTY_STEP = 1
-MPC_WEIGHT_TRACKING = 2.0
-MPC_WEIGHT_HEATER_CHG = 0.3
-MPC_WEIGHT_OVERSHOOT = 5.0
+MPC_WEIGHT_TRACKING = 5.0
+MPC_WEIGHT_HEATER_CHG = 0.1
+MPC_WEIGHT_OVERSHOOT = 2.0
 MPC_OVERSHOOT_BAND_C = 10.0
 MPC_UNSAFE_PENALTY = 100000.0
 MPC_OUT_MIN = 0.0

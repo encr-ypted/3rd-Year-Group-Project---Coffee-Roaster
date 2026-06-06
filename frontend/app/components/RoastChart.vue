@@ -74,9 +74,8 @@ function chartColors() {
     return {
       grid: 'rgba(255,255,255,0.06)',
       tick: '#a1a1aa',
-      bean: '#f97316',
-      beanFill: 'rgba(249,115,22,0.1)',
-      air: '#38bdf8',
+      temp: '#f97316',
+      tempFill: 'rgba(249,115,22,0.1)',
       planned: 'rgba(212,162,78,0.85)',
       profileMax: 'rgba(161,161,170,0.45)',
     }
@@ -84,9 +83,8 @@ function chartColors() {
   return {
     grid: 'rgba(0,0,0,0.06)',
     tick: '#78716c',
-    bean: '#d97706',
-    beanFill: 'rgba(217,119,6,0.12)',
-    air: '#0284c7',
+    temp: '#d97706',
+    tempFill: 'rgba(217,119,6,0.12)',
     planned: 'rgba(180,83,9,0.75)',
     profileMax: 'rgba(120,113,108,0.5)',
   }
@@ -137,13 +135,13 @@ function buildDatasets(colors) {
     })
   }
 
-  const bean = smoothLive(xyPoints(props.points, 'temp'), SMOOTH_TEMP_ALPHA)
-  if (bean.length) {
+  const tempSeries = smoothLive(xyPoints(props.points, 'temp'), SMOOTH_TEMP_ALPHA)
+  if (tempSeries.length) {
     datasets.push({
       label: 'Temperature',
-      data: bean,
-      borderColor: colors.bean,
-      backgroundColor: colors.beanFill,
+      data: tempSeries,
+      borderColor: colors.temp,
+      backgroundColor: colors.tempFill,
       fill: true,
       tension: 0.25,
       pointRadius: 0,

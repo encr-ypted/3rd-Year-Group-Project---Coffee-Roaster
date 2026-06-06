@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import config as cfg
 from hardware.manual_control import HardwareTestBench
 
-PORT = 8000
+PORT = 8001
 bench = HardwareTestBench()
 clients: list[WebSocket] = []
 

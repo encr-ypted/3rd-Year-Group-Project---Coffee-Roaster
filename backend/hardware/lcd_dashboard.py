@@ -15,6 +15,7 @@ import argparse
 from collections import deque
 from dataclasses import dataclass, field
 import json
+import math
 import time
 
 try:
@@ -33,7 +34,16 @@ except ImportError as exc:
         "LCD dashboard needs websocket-client. Try: pip install websocket-client"
     ) from exc
 
-from lcd_st7796_test import LCD_CS, SPI_BUS, SPI_DEVICE, ST7796Display, image_to_rgb565
+from lcd_st7796_test import (
+    LCD_BACKLIGHT_BRIGHTNESS,
+    LCD_CS,
+    LCD_PIXEL_BRIGHTNESS,
+    SPI_BUS,
+    SPI_DEVICE,
+    ST7796Display,
+    image_to_rgb565,
+)
+from roast_ramp import effective_setpoint
 
 
 DEFAULT_WS_URLS = {
@@ -41,19 +51,34 @@ DEFAULT_WS_URLS = {
     "bench": "ws://127.0.0.1:8001/ws/bench",
 }
 
-BG = (18, 16, 14)
-CARD = (28, 24, 20)
-CARD_ALT = (22, 20, 18)
-BORDER = (54, 45, 36)
-TEXT = (246, 241, 232)
-MUTED = (146, 136, 123)
-DIM = (86, 78, 68)
+BG = (30, 28, 24)
+CARD = (42, 38, 32)
+CARD_ALT = (34, 32, 28)
+BORDER = (72, 62, 50)
+TEXT = (255, 252, 245)
+MUTED = (178, 168, 152)
+DIM = (118, 108, 94)
 GOLD = (212, 162, 78)
 AMBER = (245, 158, 11)
 ORANGE = (249, 115, 22)
 EMERALD = (52, 211, 153)
 SKY = (56, 189, 248)
 RED = (239, 68, 68)
+PROFILE_MAX = (110, 105, 100)
+CHART_BG = (20, 18, 16)
+
+TEMP_MIN = 20
+TEMP_MAX = 230
+
+STATE_LABELS = {
+    "IDLE": "Idle",
+    "PREHEAT": "Preheating",
+    "ROASTING": "Roasting",
+    "COOLING": "Cooling",
+    "ERROR": "Error",
+    "BENCH": "Bench",
+    "BENCH IDLE": "Bench idle",
+}
 
 
 @dataclass
@@ -62,14 +87,18 @@ class DashboardState:
     mode: str = "roast"
     temp: float | None = None
     target: float | None = None
-    ror: float = 0.0
+    setpoint: float | None = None
+    start_temp: float | None = None
+    ramp_midpoint_min: float = 2.0
+    ramp_steepness: float = 1.0
+    sensor_fault: str | None = None
     heater_pwm: float = 0.0
     fan_pwm: float = 0.0
     state: str = "IDLE"
     elapsed_s: float = 0.0
     error: str = ""
     last_update: float = 0.0
-    samples: deque = field(default_factory=lambda: deque(maxlen=120))
+    samples: deque = field(default_factory=lambda: deque(maxlen=180))
 
 
 def clamp(value, low, high):
@@ -139,6 +168,58 @@ def state_color(state):
     }.get(state, GOLD)
 
 
+def state_label(state):
+    return STATE_LABELS.get(state, state.replace("_", " ").title())
+
+
+def is_roasting(state):
+    return state.state in ("PREHEAT", "ROASTING")
+
+
+def temp_progress_percent(temp):
+    if temp is None:
+        return 0.0
+    return clamp(((temp - TEMP_MIN) / (TEMP_MAX - TEMP_MIN)) * 100, 0, 100)
+
+
+def estimate_roast_duration_sec(start_temp, target_temp, midpoint_min, steepness=1.0):
+    if start_temp is None or target_temp is None or target_temp <= start_temp:
+        return 12 * 60
+    for sec in range(0, 30 * 60 + 1, 15):
+        if (
+            effective_setpoint(start_temp, target_temp, sec, midpoint_min, steepness)
+            >= target_temp - 0.5
+        ):
+            return sec
+    return 12 * 60
+
+
+def build_planned_curve(state, step_sec=20):
+    target = state.target
+    start = state.start_temp
+    if target is None or start is None or target <= 0:
+        return []
+
+    duration = estimate_roast_duration_sec(
+        start, target, state.ramp_midpoint_min, state.ramp_steepness
+    )
+    points = []
+    for sec in range(0, duration + 1, step_sec):
+        points.append(
+            (
+                sec,
+                effective_setpoint(
+                    start,
+                    target,
+                    sec,
+                    state.ramp_midpoint_min,
+                    state.ramp_steepness,
+                ),
+            )
+        )
+    return points
+
+
 def fmt_number(value, digits=1, empty="--"):
     if value is None:
         return empty
@@ -160,105 +241,242 @@ def draw_progress(draw, box, percent, color):
         draw.rounded_rectangle((x0, y0, filled, y1), radius=4, fill=color)
 
 
+def draw_dashed_polyline(draw, points, fill, width=1, dash=5, gap=4):
+    if len(points) < 2:
+        return
+    for index in range(len(points) - 1):
+        x0, y0 = points[index]
+        x1, y1 = points[index + 1]
+        length = math.hypot(x1 - x0, y1 - y0)
+        if length == 0:
+            continue
+        dx = (x1 - x0) / length
+        dy = (y1 - y0) / length
+        pos = 0.0
+        draw_on = True
+        while pos < length:
+            segment = dash if draw_on else gap
+            end = min(pos + segment, length)
+            if draw_on:
+                draw.line(
+                    (x0 + dx * pos, y0 + dy * pos, x0 + dx * end, y0 + dy * end),
+                    fill=fill,
+                    width=width,
+                )
+            pos = end
+            draw_on = not draw_on
+
+
+def draw_dashed_hline(draw, x0, x1, y, fill, width=1, dash=6, gap=4):
+    draw_dashed_polyline(draw, [(x0, y), (x1, y)], fill, width=width, dash=dash, gap=gap)
+
+
+def draw_centered_text(draw, box, text, font, fill, y_offset=0):
+    x0, y0, x1, y1 = box
+    width, height = text_size(draw, text, font)
+    x = x0 + ((x1 - x0) - width) // 2
+    y = y0 + ((y1 - y0) - height) // 2 + y_offset
+    draw.text((x, y), text, font=font, fill=fill)
+
+
 def draw_temperature_card(draw, state, fonts):
-    draw_card(draw, (10, 50, 230, 218))
-    draw.text((24, 64), "CURRENT TEMP", font=fonts["label"], fill=MUTED)
+    draw_card(draw, (10, 50, 230, 210))
+    draw.text((24, 62), "Temperature", font=fonts["label"], fill=MUTED)
 
     temp_text = fmt_number(state.temp, 1)
-    draw.text((22, 86), temp_text, font=fonts["temp"], fill=TEXT)
+    draw.text((22, 82), temp_text, font=fonts["temp"], fill=TEXT)
     unit_x = 22 + text_size(draw, temp_text, fonts["temp"])[0] + 5
-    draw.text((unit_x, 128), "C", font=fonts["metric"], fill=MUTED)
+    draw.text((unit_x, 124), "°C", font=fonts["metric"], fill=MUTED)
 
-    temp_min = 20
-    temp_max = 230
-    temp_value = state.temp if state.temp is not None else temp_min
-    progress = clamp(((temp_value - temp_min) / (temp_max - temp_min)) * 100, 0, 100)
-    draw_progress(draw, (24, 180, 216, 190), progress, GOLD)
-    draw.text((24, 197), "20 C", font=fonts["small"], fill=DIM)
-    draw_right_text(draw, 216, 197, "230 C", fonts["small"], DIM)
+    if state.sensor_fault:
+        fault = f"TC: {state.sensor_fault}"[:30]
+        draw.text((24, 158), fault, font=fonts["small"], fill=AMBER)
+
+    progress = temp_progress_percent(state.temp)
+    draw_progress(draw, (24, 172, 216, 182), progress, GOLD)
+    pct_text = f"{progress:.0f}%"
+    pct_w, _ = text_size(draw, pct_text, fonts["body_bold"])
+    draw.text((120 - pct_w // 2, 186), pct_text, font=fonts["body_bold"], fill=TEXT)
+    draw.text((24, 186), f"{TEMP_MIN}°", font=fonts["small"], fill=DIM)
+    draw_right_text(draw, 216, 186, f"{TEMP_MAX}°", fonts["small"], DIM)
 
 
-def draw_status_card(draw, state, fonts):
-    draw_card(draw, (240, 50, 470, 96), fill=CARD_ALT)
+def draw_connection_badge(draw, state, fonts):
+    draw_card(draw, (240, 50, 470, 92), fill=CARD_ALT)
     color = EMERALD if state.connected else RED
-    label = "ONLINE" if state.connected else "OFFLINE"
-    draw.ellipse((254, 65, 264, 75), fill=color)
-    draw.text((272, 61), label, font=fonts["label"], fill=color)
-
-    current_state = state.state or "IDLE"
-    pill_color = state_color(current_state)
-    draw.rounded_rectangle((356, 58, 458, 88), radius=8, fill=(36, 31, 27))
-    draw_right_text(draw, 448, 64, current_state[:11], fonts["body_bold"], pill_color)
+    label = "Online" if state.connected else "Offline"
+    draw.ellipse((256, 68, 264, 76), fill=color)
+    draw.text((272, 63), label, font=fonts["label"], fill=color)
 
 
-def draw_metric_card(draw, box, label, value, unit, color, fonts):
+def draw_mini_stat_card(draw, box, label, value, unit, value_color, fonts):
     draw_card(draw, box)
     x0, y0, x1, y1 = box
-    draw.text((x0 + 12, y0 + 10), label, font=fonts["label"], fill=MUTED)
+    label_w, _ = text_size(draw, label, fonts["small"])
+    draw.text((x0 + ((x1 - x0) - label_w) // 2, y0 + 8), label, font=fonts["small"], fill=MUTED)
     value_text = str(value)
-    draw.text((x0 + 12, y0 + 27), value_text, font=fonts["metric"], fill=color)
-    draw.text(
-        (x0 + 15 + text_size(draw, value_text, fonts["metric"])[0], y0 + 35),
-        unit,
-        font=fonts["small"],
-        fill=MUTED,
+    draw_centered_text(draw, (x0, y0 + 18, x1, y1 - 14), value_text, fonts["metric"], value_color)
+    unit_w, _ = text_size(draw, unit, fonts["small"])
+    draw.text((x0 + ((x1 - x0) - unit_w) // 2, y1 - 18), unit, font=fonts["small"], fill=MUTED)
+
+
+def draw_state_stat_card(draw, box, state, fonts):
+    draw_card(draw, box)
+    x0, y0, x1, y1 = box
+    label_w, _ = text_size(draw, "State", fonts["small"])
+    draw.text((x0 + ((x1 - x0) - label_w) // 2, y0 + 8), "State", font=fonts["small"], fill=MUTED)
+
+    current = state.state or "IDLE"
+    label = state_label(current)
+    pill_color = state_color(current)
+    pill_box = (x0 + 8, y0 + 30, x1 - 8, y1 - 10)
+    draw.rounded_rectangle(pill_box, radius=8, fill=(36, 31, 27))
+    draw_centered_text(draw, pill_box, label[:12], fonts["small"], pill_color, y_offset=1)
+
+
+def roast_target_stat(state):
+    if is_roasting(state):
+        value = fmt_number(state.setpoint, 0)
+        target = state.target
+        setpoint = state.setpoint
+        if target and setpoint and target > setpoint:
+            unit = f"°C → {target:.0f}"
+        else:
+            unit = "°C"
+        return "Setpoint", value, unit
+    return "Target", fmt_number(state.target, 0), "°C"
+
+
+def draw_roast_mini_stats(draw, state, fonts):
+    label, value, unit = roast_target_stat(state)
+    draw_mini_stat_card(draw, (240, 100, 316, 172), label, value, unit, GOLD, fonts)
+    draw_mini_stat_card(
+        draw,
+        (318, 100, 394, 172),
+        "Heater",
+        f"{state.heater_pwm:.0f}",
+        "%",
+        TEXT,
+        fonts,
     )
-    draw.line((x0 + 12, y1 - 10, x1 - 12, y1 - 10), fill=(46, 39, 33))
+    draw_state_stat_card(draw, (396, 100, 470, 172), state, fonts)
 
 
-def draw_output_card(draw, state, fonts):
-    draw_card(draw, (240, 166, 470, 218))
-    draw.text((252, 176), "OUTPUTS", font=fonts["label"], fill=MUTED)
+def draw_bench_mini_stats(draw, state, fonts):
+    draw_mini_stat_card(
+        draw,
+        (240, 100, 316, 172),
+        "Heater",
+        f"{state.heater_pwm:.0f}",
+        "%",
+        ORANGE,
+        fonts,
+    )
+    draw_mini_stat_card(
+        draw,
+        (318, 100, 394, 172),
+        "Fan",
+        f"{state.fan_pwm:.0f}",
+        "%",
+        SKY,
+        fonts,
+    )
+    draw_state_stat_card(draw, (396, 100, 470, 172), state, fonts)
 
-    draw.text((252, 194), "Fan", font=fonts["small"], fill=MUTED)
-    draw_progress(draw, (286, 197, 388, 205), state.fan_pwm, SKY)
-    draw_right_text(draw, 454, 191, f"{state.fan_pwm:.0f}%", fonts["body_bold"], SKY)
 
+def draw_bench_outputs(draw, state, fonts):
+    draw_card(draw, (240, 178, 470, 214))
+    draw.text((252, 186), "Outputs", font=fonts["small"], fill=MUTED)
+    draw.text((252, 198), "Fan", font=fonts["small"], fill=MUTED)
+    draw_progress(draw, (286, 201, 388, 207), state.fan_pwm, SKY)
+    draw_right_text(draw, 454, 195, f"{state.fan_pwm:.0f}%", fonts["body_bold"], SKY)
     draw.text((252, 208), "Heat", font=fonts["small"], fill=MUTED)
     draw_progress(draw, (286, 211, 388, 217), state.heater_pwm, ORANGE)
     draw_right_text(draw, 454, 205, f"{state.heater_pwm:.0f}%", fonts["body_bold"], ORANGE)
 
 
-def draw_chart(draw, state, fonts):
-    box = (10, 230, 470, 310)
-    draw_card(draw, box, fill=(20, 18, 16))
-    x0, y0, x1, y1 = box
-    draw.text((x0 + 12, y0 + 8), "TEMPERATURE TREND", font=fonts["label"], fill=MUTED)
-    draw_right_text(draw, x1 - 12, y0 + 8, fmt_elapsed(state.elapsed_s), fonts["body_bold"], GOLD)
+def chart_y_range(state, live_temps, planned_temps):
+    values = [temp for temp in live_temps if temp is not None]
+    values.extend(planned_temps)
+    if state.target:
+        values.append(state.target)
+    if not values:
+        return 20.0, 230.0
+    low = min(values)
+    high = max(values)
+    if high - low < 8:
+        mid = (high + low) / 2
+        low = mid - 4
+        high = mid + 4
+    low -= 2
+    high += 2
+    return low, high
 
-    chart = (x0 + 12, y0 + 28, x1 - 12, y1 - 10)
+
+def draw_chart(draw, state, fonts):
+    chart_top = 178 if state.mode == "roast" else 220
+    box = (10, chart_top, 470, 310)
+    draw_card(draw, box, fill=CHART_BG)
+    x0, y0, x1, y1 = box
+    if state.mode == "bench":
+        draw.text((x0 + 12, y0 + 8), "Temperature", font=fonts["label"], fill=MUTED)
+        draw.text((x0 + 12, y0 + 20), "Live trace", font=fonts["small"], fill=DIM)
+    else:
+        draw.text((x0 + 12, y0 + 8), "Roast Profile", font=fonts["label"], fill=MUTED)
+        draw.text((x0 + 12, y0 + 20), "Planned & live", font=fonts["small"], fill=DIM)
+    draw_right_text(draw, x1 - 12, y0 + 10, fmt_elapsed(state.elapsed_s), fonts["body_bold"], GOLD)
+
+    chart = (x0 + 12, y0 + 34, x1 - 12, y1 - 10)
     cx0, cy0, cx1, cy1 = chart
     draw.rectangle(chart, outline=(43, 36, 31))
     for i in range(1, 4):
         y = cy0 + ((cy1 - cy0) * i // 4)
         draw.line((cx0, y, cx1, y), fill=(33, 29, 25))
 
-    values = [sample for sample in state.samples if sample is not None]
-    if len(values) < 2:
-        draw.text((cx0 + 12, cy0 + 18), "Waiting for telemetry", font=fonts["body"], fill=DIM)
+    live = [(t, temp) for t, temp in state.samples if temp is not None]
+    planned = build_planned_curve(state) if state.mode == "roast" else []
+
+    if len(live) < 2 and not planned:
+        draw.text((cx0 + 12, cy0 + 20), "Waiting for telemetry", font=fonts["body"], fill=DIM)
         return
 
-    low = min(values)
-    high = max(values)
-    if state.target:
-        low = min(low, state.target)
-        high = max(high, state.target)
-    if high - low < 5:
-        high += 2.5
-        low -= 2.5
+    t_max = state.elapsed_s + 30
+    if live:
+        t_max = max(t_max, live[-1][0])
+    if planned:
+        t_max = max(t_max, planned[-1][0])
+    t_max = max(60.0, t_max)
 
-    def point(index, value):
-        x = cx0 + int((cx1 - cx0) * index / max(1, len(values) - 1))
-        y = cy1 - int((cy1 - cy0) * (value - low) / (high - low))
+    live_temps = [temp for _, temp in live]
+    planned_temps = [temp for _, temp in planned]
+    low, high = chart_y_range(state, live_temps, planned_temps)
+
+    def chart_point(t_sec, temp_c):
+        x = cx0 + int((cx1 - cx0) * t_sec / t_max)
+        y = cy1 - int((cy1 - cy0) * (temp_c - low) / (high - low))
         return x, y
 
-    if state.target:
-        target_y = point(0, state.target)[1]
-        draw.line((cx0, target_y, cx1, target_y), fill=(92, 69, 42), width=1)
+    if state.mode == "roast" and state.target:
+        target_y = chart_point(0, state.target)[1]
+        draw_dashed_hline(draw, cx0, cx1, target_y, PROFILE_MAX, width=1)
 
-    points = [point(index, value) for index, value in enumerate(values)]
-    draw.line(points, fill=GOLD, width=2)
-    draw.ellipse((points[-1][0] - 3, points[-1][1] - 3, points[-1][0] + 3, points[-1][1] + 3), fill=TEXT)
+    if planned:
+        planned_points = [chart_point(t, temp) for t, temp in planned]
+        draw_dashed_polyline(draw, planned_points, GOLD, width=2, dash=6, gap=4)
+
+    if len(live) >= 2:
+        live_points = [chart_point(t, temp) for t, temp in live]
+        draw.line(live_points, fill=ORANGE, width=2)
+        last_x, last_y = live_points[-1]
+        draw.ellipse((last_x - 3, last_y - 3, last_x + 3, last_y + 3), fill=TEXT)
+
+
+def header_subtitle(state):
+    if state.error:
+        return state.error[:42]
+    if state.mode == "bench":
+        return "Bench Monitor"
+    return "Roast Monitor"
 
 
 def render_dashboard(state, width, height, fonts):
@@ -275,21 +493,18 @@ def render_dashboard(state, width, height, fonts):
         draw.line((x, 0, x, 3), fill=color)
 
     draw.text((14, 14), "Smart Roaster", font=fonts["title"], fill=TEXT)
-    subtitle = state.error if state.error else "LCD Roast Monitor"
-    draw.text((164, 19), subtitle[:42], font=fonts["small"], fill=MUTED)
+    draw.text((164, 19), header_subtitle(state), font=fonts["small"], fill=MUTED)
     draw_right_text(draw, width - 12, 17, time.strftime("%H:%M:%S"), fonts["body_bold"], MUTED)
 
     draw_temperature_card(draw, state, fonts)
-    draw_status_card(draw, state, fonts)
+    draw_connection_badge(draw, state, fonts)
 
-    target = fmt_number(state.target, 0)
-    draw_metric_card(draw, (240, 106, 352, 156), "TARGET", target, "C", GOLD, fonts)
+    if state.mode == "bench":
+        draw_bench_mini_stats(draw, state, fonts)
+        draw_bench_outputs(draw, state, fonts)
+    else:
+        draw_roast_mini_stats(draw, state, fonts)
 
-    ror = f"{state.ror:+.1f}"
-    ror_color = EMERALD if state.ror >= 0 else SKY
-    draw_metric_card(draw, (358, 106, 470, 156), "ROR", ror, "C/min", ror_color, fonts)
-
-    draw_output_card(draw, state, fonts)
     draw_chart(draw, state, fonts)
     return image
 
@@ -300,17 +515,38 @@ def update_state_from_message(state, message):
     state.error = ""
 
     if msg_type == "telemetry":
+        prev_state = state.state
+        new_state = str(message.get("state", state.state))
+        if prev_state == "IDLE" and new_state in ("PREHEAT", "ROASTING"):
+            state.samples.clear()
+            if state.temp is not None:
+                state.start_temp = state.temp
+        if new_state == "IDLE":
+            state.start_temp = None
+
         state.temp = as_float(message.get("temp"), state.temp)
         state.target = as_float(message.get("target"), state.target)
-        state.ror = as_float(message.get("ror"), state.ror) or 0.0
+        state.setpoint = as_float(message.get("setpoint"), state.setpoint)
+        state.ramp_midpoint_min = (
+            as_float(message.get("ramp_midpoint_min"), state.ramp_midpoint_min) or 2.0
+        )
+        state.ramp_steepness = (
+            as_float(message.get("ramp_steepness"), state.ramp_steepness) or 1.0
+        )
+        fault = message.get("sensor_fault")
+        state.sensor_fault = str(fault) if fault else None
         state.heater_pwm = clamp(as_float(message.get("heater_pwm"), state.heater_pwm) or 0, 0, 100)
         state.fan_pwm = clamp(as_float(message.get("fan_pwm"), state.fan_pwm) or 0, 0, 100)
         state.elapsed_s = as_float(message.get("timestamp"), state.elapsed_s) or 0.0
-        state.state = str(message.get("state", state.state))
+        state.state = new_state
+
+        if state.start_temp is None and state.temp is not None and new_state != "IDLE":
+            state.start_temp = state.temp
     elif msg_type == "bench_telemetry":
         state.temp = as_float(message.get("temp"), state.temp)
         state.target = None
-        state.ror = 0.0
+        state.setpoint = None
+        state.sensor_fault = None
         state.heater_pwm = clamp(as_float(message.get("heater_pwm"), state.heater_pwm) or 0, 0, 100)
         state.fan_pwm = clamp(as_float(message.get("fan_pwm"), state.fan_pwm) or 0, 0, 100)
         state.state = "BENCH" if message.get("session_active") else "BENCH IDLE"
@@ -327,7 +563,10 @@ def update_state_from_message(state, message):
         state.error = str(message.get("msg", "Hardware error"))[:42]
 
     if state.temp is not None and msg_type in ("telemetry", "bench_telemetry", "bench_result"):
-        state.samples.append(state.temp)
+        if msg_type == "telemetry":
+            state.samples.append((state.elapsed_s, state.temp))
+        else:
+            state.samples.append((len(state.samples), state.temp))
 
 
 def connect_ws(url, mode):
@@ -343,12 +582,16 @@ def run_dashboard(args):
     state = DashboardState(mode=args.mode)
     fonts = load_fonts()
 
+    pixel_brightness = args.pixel_brightness
+
     lcd = ST7796Display(
         rotation=args.rotation,
         bus=args.bus,
         device=args.device,
         cs_pin=args.cs_pin,
         speed_hz=args.speed,
+        backlight_brightness=args.backlight,
+        display_inversion=not args.no_inversion,
     )
     ws = None
     frame_interval = 1 / max(0.2, args.fps)
@@ -360,14 +603,24 @@ def run_dashboard(args):
             if ws is None:
                 state.connected = False
                 state.error = f"Connecting to {ws_url}"
-                lcd.draw_rgb565(image_to_rgb565(render_dashboard(state, lcd.width, lcd.height, fonts)))
+                lcd.draw_rgb565(
+                    image_to_rgb565(
+                        render_dashboard(state, lcd.width, lcd.height, fonts),
+                        pixel_brightness=pixel_brightness,
+                    )
+                )
                 try:
                     ws = connect_ws(ws_url, args.mode)
                     state.connected = True
                     state.error = ""
                 except Exception as exc:
                     state.error = f"Offline: {exc.__class__.__name__}"
-                    lcd.draw_rgb565(image_to_rgb565(render_dashboard(state, lcd.width, lcd.height, fonts)))
+                    lcd.draw_rgb565(
+                        image_to_rgb565(
+                            render_dashboard(state, lcd.width, lcd.height, fonts),
+                            pixel_brightness=pixel_brightness,
+                        )
+                    )
                     time.sleep(args.reconnect_delay)
                     continue
 
@@ -389,7 +642,7 @@ def run_dashboard(args):
             now = time.monotonic()
             if now >= next_frame:
                 image = render_dashboard(state, lcd.width, lcd.height, fonts)
-                lcd.draw_rgb565(image_to_rgb565(image))
+                lcd.draw_rgb565(image_to_rgb565(image, pixel_brightness=pixel_brightness))
                 next_frame = now + frame_interval
     except KeyboardInterrupt:
         pass
@@ -420,6 +673,23 @@ def main():
         default=90,
         choices=(0, 90, 180, 270),
         help="Display rotation in degrees",
+    )
+    parser.add_argument(
+        "--backlight",
+        type=float,
+        default=LCD_BACKLIGHT_BRIGHTNESS,
+        help="Backlight PWM duty from 0.0 to 1.0 (default: full brightness)",
+    )
+    parser.add_argument(
+        "--pixel-brightness",
+        type=float,
+        default=LCD_PIXEL_BRIGHTNESS,
+        help="Software brightness boost for dashboard frames (1.0 = unchanged)",
+    )
+    parser.add_argument(
+        "--no-inversion",
+        action="store_true",
+        help="Disable display inversion (try if the panel looks washed out)",
     )
     args = parser.parse_args()
     run_dashboard(args)

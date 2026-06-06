@@ -41,7 +41,7 @@ const defaults = ref({
   horizon: 30,
 })
 
-const controllerMode = ref('mpc')
+const controllerMode = ref('pid')
 const usesMpc = computed(() => controllerMode.value === 'mpc')
 const usesPid = computed(() => controllerMode.value === 'pid')
 
@@ -176,7 +176,7 @@ const statusText = computed(() => {
           <div>
             <h2 class="text-xs font-semibold text-orange-300 uppercase tracking-wider">Heater</h2>
             <p class="text-[10px] text-zinc-500 mt-1">
-              Bench only — main dashboard uses MPC.
+              Bench only — main dashboard uses PID.
             </p>
           </div>
           <div class="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-black/30 border border-white/10 sm:w-40 shrink-0">

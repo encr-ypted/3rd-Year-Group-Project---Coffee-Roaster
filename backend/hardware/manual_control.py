@@ -53,7 +53,7 @@ class HardwareTestBench:
         ctrl = self.heater_controller
         if hasattr(ctrl, "set_gains"):
             return ctrl.set_gains(kp, ki, kd, reset=reset)
-        return ctrl.get_mpc_config()
+        return ctrl.get_pid_config()
 
     def set_mpc(
         self,
@@ -72,7 +72,17 @@ class HardwareTestBench:
                 horizon=horizon,
                 reset=reset,
             )
-        return ctrl.get_pid_config()
+        return ctrl.get_mpc_config()
+
+    def set_controller(self, mode):
+        mode = (mode or "").lower()
+        if mode not in ("pid", "mpc"):
+            return False
+        if self.heating:
+            self.stop_heat()
+        self.controller_mode = mode
+        self.heater_controller = create_heater_controller(mode)
+        return True
 
     def set_fan(self, percent):
         pct = max(0.0, min(100.0, percent))

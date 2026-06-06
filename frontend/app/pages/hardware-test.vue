@@ -154,15 +154,17 @@ const statusText = computed(() => {
       </p>
 
       <section class="rounded-2xl border border-white/[0.06] bg-[#1a1714] p-5">
-        <div class="flex justify-between items-start mb-3">
+        <div class="flex justify-between items-start mb-4">
           <h2 class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Temperature</h2>
           <span v-if="streaming" class="text-[10px] text-emerald-400 uppercase">Live</span>
         </div>
+
         <p class="text-4xl font-bold text-white tabular-nums">
           {{ live.temp != null ? live.temp.toFixed(1) : '—' }}
           <span class="text-lg text-zinc-500 font-normal">°C</span>
         </p>
-        <p class="text-xs text-zinc-600 mt-2 tabular-nums">
+
+        <p class="text-xs text-zinc-600 mt-4 pt-3 border-t border-white/[0.06] tabular-nums">
           Heater {{ live.heaterPwm }}%
           <span v-if="live.heating && live.target"> → {{ live.target }}°C</span>
           · Fan {{ live.fanPwm }}%

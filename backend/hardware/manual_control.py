@@ -34,6 +34,7 @@ class HardwareTestBench:
 
         self._thermocouple = RoasterThermocouple()
         self._heater = RoasterHeater()
+        self._heater.halt()
         self._fan = RoasterMotor()
         self._heat_task = None
 
@@ -109,7 +110,7 @@ class HardwareTestBench:
         self.heater_pwm = 0
 
     def _heater_duty(self, temp):
-        if temp > self.target_c + cfg.OVERSHOOT_CUTOFF_C:
+        if self.temp_c is not None and self.temp_c > self.target_c + cfg.OVERSHOOT_CUTOFF_C:
             return 0.0
         return self.heater_controller.calculate(self.target_c, temp)
 
@@ -120,6 +121,9 @@ class HardwareTestBench:
                 self._poll_temp()
                 temp = self._last_good_temp
                 if temp is None:
+                    self.heater_pwm = round(
+                        await self._heater.apply_output(self.heater_pwm), 1
+                    )
                     await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
                     continue
 
@@ -165,8 +169,8 @@ class HardwareTestBench:
         try:
             temp, fault = read_thermocouple(self._thermocouple)
             self.sensor_fault = fault
-            self.temp_c = temp
             if temp is not None:
+                self.temp_c = temp
                 self._last_good_temp = temp
         except Exception as exc:
             self.sensor_fault = str(exc)

@@ -20,10 +20,11 @@ PREHEAT_THRESHOLD_C = 150.0
 COOL_DOWN_TEMP_C = 33
 
 # GPIO (BCM pins for gpiozero)
-HEATER_GPIO = 18
+HEATER_GPIO = 23
 FAN_PWM_GPIO = 12
 FAN_PWM_FREQUENCY_HZ = 1000
 
+# MAX31855 on SPI0 — SCLK 11, MOSI 10, MISO 9 (enable: dtparam=spi=on)
 THERMOCOUPLE_CS_GPIO = 8
 THERMOCOUPLE_SCLK_GPIO = 11
 THERMOCOUPLE_DO_GPIO = 9
@@ -66,30 +67,45 @@ MPC_UNSAFE_PENALTY = 100000.0
 MPC_OUT_MIN = 0.0
 MPC_OUT_MAX = 100.0
 
-# Roast profiles — single source of truth for UI + controller target (°C)
+# Sigmoid setpoint ramp defaults (see hardware/roast_ramp.py)
+#   setpoint = span / (1 + exp(-steepness * (t_min - midpoint_min))) + start
+DEFAULT_RAMP_MIDPOINT_MIN = 2.0
+DEFAULT_RAMP_STEEPNESS = 1.0
+
+# Roast profiles — final target (°C) + sigmoid ramp shape
 ROAST_PROFILES = {
     "light": {
         "target_c": 196.0,
+        "ramp_midpoint_min": 2.5,
+        "ramp_steepness": 0.9,
         "name": "Light",
         "desc": "Fruity & bright",
     },
     "medium": {
         "target_c": 210.0,
+        "ramp_midpoint_min": 2.0,
+        "ramp_steepness": 1.0,
         "name": "Medium",
         "desc": "Balanced & smooth",
     },
     "medium-dark": {
         "target_c": 220.0,
+        "ramp_midpoint_min": 1.8,
+        "ramp_steepness": 1.1,
         "name": "Med-Dark",
         "desc": "Rich & full-bodied",
     },
     "dark": {
         "target_c": 230.0,
+        "ramp_midpoint_min": 1.6,
+        "ramp_steepness": 1.2,
         "name": "Dark",
         "desc": "Bold & smoky",
     },
     "default": {
         "target_c": 210.0,
+        "ramp_midpoint_min": DEFAULT_RAMP_MIDPOINT_MIN,
+        "ramp_steepness": DEFAULT_RAMP_STEEPNESS,
         "name": "Default",
         "desc": "",
     },
@@ -99,9 +115,22 @@ ROAST_PROFILES = {
 ROAST_PROFILE_ORDER = ["light", "medium", "medium-dark", "dark"]
 
 
+def profile_entry(profile_id):
+    return ROAST_PROFILES.get(profile_id) or ROAST_PROFILES["default"]
+
+
 def target_for_profile(profile_id):
-    entry = ROAST_PROFILES.get(profile_id) or ROAST_PROFILES["default"]
-    return float(entry["target_c"])
+    return float(profile_entry(profile_id)["target_c"])
+
+
+def ramp_sigmoid_for_profile(profile_id):
+    entry = profile_entry(profile_id)
+    return {
+        "midpoint_min": float(
+            entry.get("ramp_midpoint_min", DEFAULT_RAMP_MIDPOINT_MIN)
+        ),
+        "steepness": float(entry.get("ramp_steepness", DEFAULT_RAMP_STEEPNESS)),
+    }
 
 
 def list_roast_profiles():
@@ -110,11 +139,14 @@ def list_roast_profiles():
         if profile_id not in ROAST_PROFILES:
             continue
         entry = ROAST_PROFILES[profile_id]
+        ramp = ramp_sigmoid_for_profile(profile_id)
         profiles.append(
             {
                 "id": profile_id,
                 "name": entry["name"],
                 "target_c": entry["target_c"],
+                "ramp_midpoint_min": ramp["midpoint_min"],
+                "ramp_steepness": ramp["steepness"],
                 "desc": entry.get("desc", ""),
             }
         )

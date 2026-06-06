@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { createSensorFaultHold } from './sensorFaultHold';
 
-const HOST = "samimarouf:8000"
+const HOST = "localhost:8000"
 const API_BASE = `http://${HOST}`;
 const WS_URL = `ws://${HOST}/ws/telemetry`;
 
@@ -22,7 +22,9 @@ const liveData = ref({
     timestamp: 0,
     temp: 20.0,
     targetTemp: 0.0,
-    ror: 0.0,
+    setpointTemp: 0.0,
+    rampMidpointMin: 0,
+    rampSteepness: 0,
     heaterPwm: 0,
     fanPwm: 0,
     state: 'IDLE',
@@ -33,6 +35,7 @@ const liveData = ref({
 });
 
 const roastDataPoints = ref([]);
+const roastPlan = ref(null);
 const sensorFaultHold = createSensorFaultHold();
 
 const sendJson = (payload) => {
@@ -48,6 +51,8 @@ function mapProfiles(rows) {
         desc: p.desc || '',
         temp: p.target_c,
         target_c: p.target_c,
+        rampMid: p.ramp_midpoint_min,
+        rampK: p.ramp_steepness,
         dot: PROFILE_DOTS[p.id] || 'bg-amber-600',
     }));
 }
@@ -88,7 +93,11 @@ export const useCoffeeRoaster = () => {
                         timestamp: message.timestamp,
                         temp: message.temp,
                         targetTemp: message.target,
-                        ror: message.ror,
+                        setpointTemp: message.setpoint ?? message.target,
+                        rampMidpointMin:
+                            message.ramp_midpoint_min ?? liveData.value.rampMidpointMin,
+                        rampSteepness:
+                            message.ramp_steepness ?? liveData.value.rampSteepness,
                         heaterPwm: message.heater_pwm,
                         fanPwm: message.fan_pwm,
                         state: message.state,
@@ -103,6 +112,17 @@ export const useCoffeeRoaster = () => {
                         (v) => { liveData.value.sensorFault = v },
                         message.sensor_fault ?? null,
                     );
+
+                    if (roastPlan.value && message.state !== 'IDLE') {
+                        roastPlan.value = {
+                            ...roastPlan.value,
+                            target: message.target ?? roastPlan.value.target,
+                            midpointMin:
+                                message.ramp_midpoint_min ?? roastPlan.value.midpointMin,
+                            steepness:
+                                message.ramp_steepness ?? roastPlan.value.steepness,
+                        };
+                    }
 
                     if (message.state !== 'IDLE' && message.temp != null) {
                         roastDataPoints.value.push({ ...liveData.value });
@@ -156,9 +176,24 @@ export const useCoffeeRoaster = () => {
         socket.value?.close();
     };
 
+    const setRoastPlanFromProfile = (profile) => {
+        if (!profile) {
+            roastPlan.value = null;
+            return;
+        }
+        roastPlan.value = {
+            startTemp: liveData.value.temp ?? 20,
+            target: profile.target_c,
+            midpointMin: profile.rampMid ?? 2,
+            steepness: profile.rampK ?? 1,
+        };
+    };
+
     const startRoast = (profileId) => {
         if (!isConnected.value) return;
         roastDataPoints.value = [];
+        const profile = roastProfiles.value.find((p) => p.id === profileId);
+        setRoastPlanFromProfile(profile);
         sendJson({ action: 'START_ROAST', profile_id: profileId });
     };
 
@@ -209,6 +244,8 @@ export const useCoffeeRoaster = () => {
         roastProfiles,
         profilesLoaded,
         roastDataPoints,
+        roastPlan,
+        setRoastPlanFromProfile,
         startRoast,
         stopRoast,
         resumeRoast,

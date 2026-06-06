@@ -63,11 +63,6 @@ const stateDisplay = computed(() => {
   return states[liveData.value.state] || states.IDLE
 })
 
-const airTempDisplay = computed(() => {
-  const t = liveData.value.tempAir
-  if (t == null || !Number.isFinite(t)) return '—'
-  return t.toFixed(1)
-})
 const isIdle = computed(() => liveData.value.state === 'IDLE')
 
 watch(selectedProfile, (profile) => {
@@ -239,7 +234,7 @@ const c = computed(() => isDark.value ? {
           <div class="card-base" :class="c.card">
             <div class="glow-line" :class="c.glowVia" />
             <div class="flex items-center justify-between mb-2">
-              <span class="lbl" :class="c.label">Bean temp</span>
+              <span class="lbl" :class="c.label">Temperature</span>
               <div class="icon-wrap" :class="[c.icon, c.iconHov]">
                 <Icon name="lucide:thermometer" class="w-4 h-4" :class="c.iconClr" />
               </div>
@@ -249,12 +244,10 @@ const c = computed(() => isDark.value ? {
               {{ liveData.temp != null ? liveData.temp.toFixed(1) : '—' }}<span class="text-lg font-semibold ml-1" :class="c.unit">°C</span>
             </p>
             <p
-              v-if="liveData.sensorFaultBean || liveData.sensorFaultAir"
+              v-if="liveData.sensorFault"
               class="mt-2 text-xs font-medium text-amber-400/90 leading-snug"
             >
-              <span v-if="liveData.sensorFaultBean">Bean: {{ liveData.sensorFaultBean }}</span>
-              <span v-if="liveData.sensorFaultBean && liveData.sensorFaultAir"> · </span>
-              <span v-if="liveData.sensorFaultAir">Air: {{ liveData.sensorFaultAir }}</span>
+              Thermocouple: {{ liveData.sensorFault }}
             </p>
 
             <!-- Integrated progress gauge -->
@@ -297,28 +290,18 @@ const c = computed(() => isDark.value ? {
               </div>
             </div>
 
-            <!-- Chamber (air) -->
+            <!-- Heater -->
             <div
               class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0"
               :class="c.card"
             >
-              <span class="lbl text-[8px] shrink-0" :class="c.label">Chamber</span>
+              <span class="lbl text-[8px] shrink-0" :class="c.label">Heater</span>
               <div class="mt-1.5 flex flex-col items-center leading-none min-w-0 w-full">
-                <span
-                  class="text-lg sm:text-xl font-extrabold tabular-nums"
-                  :class="liveData.tempAir != null ? (isDark ? 'text-sky-400' : 'text-sky-700') : c.value"
-                >
-                  {{ airTempDisplay }}
+                <span class="text-lg sm:text-xl font-extrabold tabular-nums" :class="c.value">
+                  {{ liveData.heaterPwm }}
                 </span>
-                <span class="text-[9px] font-semibold mt-0.5" :class="c.unit">°C air</span>
+                <span class="text-[9px] font-semibold mt-0.5" :class="c.unit">%</span>
               </div>
-              <p
-                v-if="liveData.sensorFaultAir"
-                class="mt-1 text-[8px] text-amber-500/90 leading-tight line-clamp-2 max-w-full px-0.5"
-                :title="liveData.sensorFaultAir"
-              >
-                {{ liveData.sensorFaultAir }}
-              </p>
             </div>
 
             <!-- State -->
@@ -487,7 +470,7 @@ const c = computed(() => isDark.value ? {
               <div>
                 <h3 class="text-xs font-bold uppercase tracking-widest" :class="c.secTitle">Roast Profile</h3>
                 <p class="text-[10px] mt-0.5" :class="c.secSub">
-                  Planned curve, bean &amp; chamber air
+                  Planned curve &amp; live temperature
                 </p>
               </div>
             </div>

@@ -30,10 +30,7 @@ const liveData = ref({
     state: 'IDLE',
     heaterHalted: false,
     canResume: false,
-    tempAir: null,
     sensorFault: null,
-    sensorFaultBean: null,
-    sensorFaultAir: null,
     testSpin: false,
 });
 
@@ -95,7 +92,6 @@ export const useCoffeeRoaster = () => {
                         ...liveData.value,
                         timestamp: message.timestamp,
                         temp: message.temp,
-                        tempAir: message.temp_air ?? liveData.value.tempAir,
                         targetTemp: message.target,
                         setpointTemp: message.setpoint ?? message.target,
                         rampMidpointMin:
@@ -112,17 +108,9 @@ export const useCoffeeRoaster = () => {
                                 ? message.test_spin
                                 : liveData.value.testSpin,
                     };
-                    if (message.sensor_fault_bean !== undefined) {
-                        liveData.value.sensorFaultBean = message.sensor_fault_bean;
-                    }
-                    if (message.sensor_fault_air !== undefined) {
-                        liveData.value.sensorFaultAir = message.sensor_fault_air;
-                    }
                     sensorFaultHold.apply(
                         (v) => { liveData.value.sensorFault = v },
-                        message.sensor_fault_bean
-                            ?? message.sensor_fault
-                            ?? null,
+                        message.sensor_fault ?? null,
                     );
 
                     if (roastPlan.value && message.state !== 'IDLE') {
@@ -136,10 +124,7 @@ export const useCoffeeRoaster = () => {
                         };
                     }
 
-                    if (
-                        message.state !== 'IDLE'
-                        && (message.temp != null || message.temp_air != null)
-                    ) {
+                    if (message.state !== 'IDLE' && message.temp != null) {
                         roastDataPoints.value.push({ ...liveData.value });
                     }
                 } else if (message.type === 'system_state') {

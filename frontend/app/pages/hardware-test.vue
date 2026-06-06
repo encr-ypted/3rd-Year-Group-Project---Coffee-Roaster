@@ -159,36 +159,10 @@ const statusText = computed(() => {
           <span v-if="streaming" class="text-[10px] text-emerald-400 uppercase">Live</span>
         </div>
 
-        <div class="grid grid-cols-2 divide-x divide-white/[0.08] min-w-0">
-          <div class="pr-4 min-w-0 text-center sm:text-left">
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-orange-400/80">Bean</p>
-            <p class="mt-1 text-3xl sm:text-4xl font-bold text-white tabular-nums leading-none">
-              {{ live.temp != null ? live.temp.toFixed(1) : '—' }}
-              <span class="text-base sm:text-lg text-zinc-500 font-normal">°C</span>
-            </p>
-            <p
-              v-if="live.sensorFaultBean"
-              class="mt-2 text-[10px] text-amber-400/90 leading-snug"
-            >
-              {{ live.sensorFaultBean }}
-            </p>
-          </div>
-
-          <div class="pl-4 min-w-0 text-center sm:text-left">
-            <p class="text-[10px] font-semibold uppercase tracking-wider text-sky-400/80">Air</p>
-            <p class="text-[10px] text-zinc-600 -mt-0.5 mb-1">Heater control</p>
-            <p class="text-3xl sm:text-4xl font-bold text-white tabular-nums leading-none">
-              {{ live.tempAir != null ? live.tempAir.toFixed(1) : '—' }}
-              <span class="text-base sm:text-lg text-zinc-500 font-normal">°C</span>
-            </p>
-            <p
-              v-if="live.sensorFaultAir"
-              class="mt-2 text-[10px] text-amber-400/90 leading-snug"
-            >
-              {{ live.sensorFaultAir }}
-            </p>
-          </div>
-        </div>
+        <p class="text-4xl font-bold text-white tabular-nums">
+          {{ live.temp != null ? live.temp.toFixed(1) : '—' }}
+          <span class="text-lg text-zinc-500 font-normal">°C</span>
+        </p>
 
         <p class="text-xs text-zinc-600 mt-4 pt-3 border-t border-white/[0.06] tabular-nums">
           Heater {{ live.heaterPwm }}%

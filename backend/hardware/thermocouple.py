@@ -1,18 +1,15 @@
 import time
 
+import adafruit_max31855
 import board
 import digitalio
-import adafruit_max31855
 
-from config import (
-    THERMOCOUPLE_BEAN_CS_GPIO,
-    THERMOCOUPLE_STARTUP_DELAY_S,
-)
+from config import THERMOCOUPLE_CS_GPIO, THERMOCOUPLE_STARTUP_DELAY_S
 
 
 class RoasterThermocouple:
     def __init__(self, cs_gpio=None):
-        pin = cs_gpio if cs_gpio is not None else THERMOCOUPLE_BEAN_CS_GPIO
+        pin = cs_gpio if cs_gpio is not None else THERMOCOUPLE_CS_GPIO
         cs = getattr(board, f"D{pin}")
         self.spi = board.SPI()
         self.cs = digitalio.DigitalInOut(cs)

@@ -140,7 +140,7 @@ function buildDatasets(colors) {
   const bean = smoothLive(xyPoints(props.points, 'temp'), SMOOTH_TEMP_ALPHA)
   if (bean.length) {
     datasets.push({
-      label: 'Bean',
+      label: 'Temperature',
       data: bean,
       borderColor: colors.bean,
       backgroundColor: colors.beanFill,
@@ -150,20 +150,6 @@ function buildDatasets(colors) {
       borderWidth: 2.5,
       yAxisID: 'y',
       order: 1,
-    })
-  }
-
-  const air = smoothLive(xyPoints(props.points, 'tempAir'), SMOOTH_TEMP_ALPHA)
-  if (air.length) {
-    datasets.push({
-      label: 'Chamber (air)',
-      data: air,
-      borderColor: colors.air,
-      tension: 0.25,
-      pointRadius: 0,
-      borderWidth: 2,
-      yAxisID: 'y',
-      order: 2,
     })
   }
 
@@ -303,7 +289,7 @@ onUnmounted(() => {
       v-else-if="!roasting && hasPlan"
       class="absolute top-2 right-3 text-[10px] text-zinc-500 pointer-events-none"
     >
-      Preview — start roast for live bean &amp; chamber traces
+      Preview — start roast for live temperature trace
     </p>
   </div>
 </template>

@@ -20,18 +20,14 @@ PREHEAT_THRESHOLD_C = 150.0
 COOL_DOWN_TEMP_C = 33
 
 # GPIO (BCM pins for gpiozero)
-HEATER_GPIO = 18
+HEATER_GPIO = 23
 FAN_PWM_GPIO = 12
 FAN_PWM_FREQUENCY_HZ = 1000
 
-# MAX31855 on SPI0 — one CS per probe (shared CLK/MISO/MOSI)
-THERMOCOUPLE_BEAN_CS_GPIO = 8   # existing probe — profile, RoR, state machine
-THERMOCOUPLE_AIR_CS_GPIO = 7    # chamber/air — MPC/PID heater input
+# MAX31855 on SPI0 — SCLK 11, MOSI 10, MISO 9 (enable: dtparam=spi=on)
+THERMOCOUPLE_CS_GPIO = 8
 THERMOCOUPLE_SCLK_GPIO = 11
 THERMOCOUPLE_DO_GPIO = 9
-
-# Back-compat alias
-THERMOCOUPLE_CS_GPIO = THERMOCOUPLE_BEAN_CS_GPIO
 
 # Fan (low-side PWM duty 0.0–1.0; active_high=False in RoasterMotor)
 FAN_DEFAULT_SPEED = 1.0

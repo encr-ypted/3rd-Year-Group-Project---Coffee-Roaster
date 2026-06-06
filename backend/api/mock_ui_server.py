@@ -142,8 +142,7 @@ class RoastSimulator:
         self.ramp_mid = 2.0
         self.ramp_k = 1.0
         self.start_temp = 25.0
-        self.bean = 25.0
-        self.air = 26.0
+        self.temp = 25.0
         self.setpoint = 25.0
         self.heater_pwm = 0
         self.fan_pwm = 0
@@ -168,7 +167,7 @@ class RoastSimulator:
                 self.target = p["target_c"]
                 self.ramp_mid = p["ramp_midpoint_min"]
                 self.ramp_k = p["ramp_steepness"]
-                self.start_temp = self.bean
+                self.start_temp = self.temp
                 self.state = "PREHEAT"
                 self._t0 = time.time()
                 self.test_spin = False
@@ -243,45 +242,39 @@ class RoastSimulator:
                     self.ramp_mid,
                     self.ramp_k,
                 )
-                err = self.setpoint - self.bean
+                err = self.setpoint - self.temp
                 self.heater_pwm = int(min(100, max(0, 40 + err * 2.5 + random.uniform(-2, 2))))
                 self.fan_pwm = 85
-                self.bean += err * 0.08 + noise
-                self.air = self.bean + random.uniform(6.0, 12.0) + noise
-                if self.state == "PREHEAT" and self.bean >= 150:
+                self.temp += err * 0.08 + noise
+                if self.state == "PREHEAT" and self.temp >= 150:
                     self.state = "ROASTING"
             elif self.state == "COOLING":
                 self.setpoint = 0.0
                 self.heater_pwm = 0
                 self.fan_pwm = 100
-                self.bean = max(33.0, self.bean - 0.35 + noise * 0.3)
-                self.air = max(32.0, self.air - 0.4 + noise * 0.3)
-                if self.bean <= 34.0:
+                self.temp = max(33.0, self.temp - 0.35 + noise * 0.3)
+                if self.temp <= 34.0:
                     self.state = "IDLE"
                     self.fan_pwm = 0
                     self.target = 0.0
             elif self.test_spin:
                 self.heater_pwm = 0
                 self.fan_pwm = 100
-                self.bean += noise * 0.05
-                self.air = self.bean + 1.0
+                self.temp += noise * 0.05
             else:
                 self.heater_pwm = 0
                 if not self.test_spin:
                     self.fan_pwm = 0
-                self.setpoint = self.bean
+                self.setpoint = self.temp
                 ambient = 24.0 + math.sin(self._tick * 0.05) * 0.3
-                self.bean += (ambient - self.bean) * 0.02 + noise * 0.1
-                self.air = self.bean + random.uniform(0.5, 2.0)
+                self.temp += (ambient - self.temp) * 0.02 + noise * 0.1
 
     def telemetry(self) -> dict:
         with self._lock:
             return {
                 "type": "telemetry",
                 "timestamp": round(self._elapsed(), 1),
-                "temp": round(self.bean, 1),
-                "temp_bean": round(self.bean, 1),
-                "temp_air": round(self.air, 1),
+                "temp": round(self.temp, 1),
                 "target": self.target,
                 "setpoint": round(self.setpoint, 1),
                 "ramp_midpoint_min": self.ramp_mid,
@@ -291,8 +284,6 @@ class RoastSimulator:
                 "state": self.state,
                 "heater_halted": self.heater_halted,
                 "sensor_fault": None,
-                "sensor_fault_bean": None,
-                "sensor_fault_air": None,
                 "can_resume": self.state == "COOLING",
                 "test_spin": self.test_spin,
             }
@@ -301,8 +292,7 @@ class RoastSimulator:
 class BenchSimulator:
     def __init__(self):
         self._lock = threading.Lock()
-        self.bean = 28.0
-        self.air = 30.0
+        self.temp = 28.0
         self.fan_pwm = 0
         self.heater_pwm = 0
         self.heating = False
@@ -318,9 +308,7 @@ class BenchSimulator:
         with self._lock:
             return {
                 "type": msg_type,
-                "temp": round(self.bean, 1),
-                "temp_bean": round(self.bean, 1),
-                "temp_air": round(self.air, 1),
+                "temp": round(self.temp, 1),
                 "fan_pwm": self.fan_pwm,
                 "heater_pwm": self.heater_pwm,
                 "heating": self.heating,
@@ -334,8 +322,6 @@ class BenchSimulator:
                 "weight_overshoot": self.weight_overshoot,
                 "horizon": self.horizon,
                 "sensor_fault": None,
-                "sensor_fault_bean": None,
-                "sensor_fault_air": None,
             }
 
     def handle_action(self, action: str, body: dict) -> dict:
@@ -379,15 +365,13 @@ class BenchSimulator:
     def tick(self) -> None:
         with self._lock:
             if self.heating:
-                err = self.target - self.air
+                err = self.target - self.temp
                 self.heater_pwm = int(min(100, max(0, 35 + err * 3)))
                 self.fan_pwm = max(self.fan_pwm, 40)
-                self.air += err * 0.06 + random.uniform(-0.1, 0.1)
-                self.bean += (self.air - self.bean) * 0.15 + random.uniform(-0.1, 0.1)
+                self.temp += err * 0.06 + random.uniform(-0.1, 0.1)
             else:
                 self.heater_pwm = 0
-                self.bean += (25.5 - self.bean) * 0.03
-                self.air += (26.0 - self.air) * 0.03
+                self.temp += (25.5 - self.temp) * 0.03
 
 
 roast = RoastSimulator()

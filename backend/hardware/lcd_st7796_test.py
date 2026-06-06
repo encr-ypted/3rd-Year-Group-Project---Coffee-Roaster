@@ -1,9 +1,9 @@
 """
 Minimal ST7796 SPI LCD smoke test for the coffee roaster Raspberry Pi.
 
-Default wiring intentionally uses SPI1 so LCD image transfers do not share the
-MAX31855 thermocouple bus on SPI0. SPI1 CE0 normally uses BCM GPIO 18, which is
-already the heater SSR pin in this project, so remap SPI1 CS to BCM GPIO 17:
+Default wiring uses SPI1 for the LCD so image transfers do not share SPI0 with
+the MAX31855 thermocouple. Heater SSR is GPIO 5 (not GPIO 18 — SPI1 CE0). For
+LCD-only SPI1 use:
 
     dtoverlay=spi1-1cs,cs0_pin=17
 

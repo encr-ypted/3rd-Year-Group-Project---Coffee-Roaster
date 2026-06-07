@@ -14,10 +14,10 @@ MAX_SAFE_TEMP_C = 250.0
 LOG_FOLDER = "logs"
 COMMAND_FILE = "roaster_command.txt"
 
-HEATER_GPIO = 23
+HEATER_GPIO = 18
 CONTROL_WINDOW_S = 1.0
 
-IN1 = 25
+IN1 = 23
 IN2 = 24
 ENA = 12
 
@@ -29,15 +29,15 @@ FAN_RAMP_STEPS = 10
 fan_ramp_done = False
 
 AMBIENT_C = 25.0
-MODEL_A = 0.9978
-MODEL_B = 0.0052
+MODEL_A = 0.9555
+MODEL_B = 0.1173
 
-PREDICTION_HORIZON = 120
+PREDICTION_HORIZON = 30
 DUTY_STEP = 1
 
-WEIGHT_TRACKING = 6.0
+WEIGHT_TRACKING = 2.0
 WEIGHT_HEATER_CHG_IN = 0.1
-WEIGHT_OVERSHOOT = 3.0
+WEIGHT_OVERSHOOT = 10.0
 
 previous_heater_output = 0.0
 
@@ -63,40 +63,55 @@ def fan_off():
 
 
 def fan_ramp_start():
-<<<<<<< Updated upstream
-    print("ramping fan")
-=======
     print("ramp fan before heater is started")
->>>>>>> Stashed changes
 
     for i in range(FAN_RAMP_STEPS + 1):
         speed = MOTOR_OFF_SPEED - ((MOTOR_OFF_SPEED - MOTOR_ON_SPEED) * (i / FAN_RAMP_STEPS))
         enable.value = speed
         motor.forward()
-<<<<<<< Updated upstream
-        print(f"Fan speed: {speed:.2f}")
-        time.sleep(FAN_RAMP_TIME_S / FAN_RAMP_STEPS)
-
-    enable.value = MOTOR_ON_SPEED
-    print("Fan ramp complete")
-=======
         print(f"Fan ramp spd: {speed:.2f}")
         time.sleep(FAN_RAMP_TIME_S / FAN_RAMP_STEPS)
 
     enable.value = MOTOR_ON_SPEED
     print("Fan ramp complete so heater is now allowed")
->>>>>>> Stashed changes
 
+
+def read_average_temp(samples=3, delay=0.02):
+    readings = []
+
+    for _ in range(samples):
+        try:
+            value = sensor.temperature
+            if value is not None and value > -10:
+                readings.append(value)
+        except Exception:
+            pass
+
+        time.sleep(delay)
+
+    if len(readings) == 0:
+        raise RuntimeError("No valid temperature readings")
+
+    return sum(readings) / len(readings)
 
 def read_command():
     if not os.path.exists(COMMAND_FILE):
-        return "IDLE"
+        return "IDLE", TARGET_C
 
     with open(COMMAND_FILE, "r") as file:
-        return file.read().strip()
+        text = file.read().strip()
+
+    if text.startswith("RUN,"):
+        try:
+            _, target = text.split(",")
+            return "RUN", float(target)
+        except Exception:
+            return "RUN", TARGET_C
+
+    return text, TARGET_C
 
 
-def calculate_mpc(temp_c):
+def calculate_mpc(temp_c, target_c):
     global previous_heater_output
 
     best_duty = 0.0
@@ -109,20 +124,15 @@ def calculate_mpc(temp_c):
         for _ in range(PREDICTION_HORIZON):
             predicted_temp = (
                 AMBIENT_C
-                + MODEL_A * (predicted_temp - AMBIENT_C) 
-                + MODEL_B * duty    
+                + MODEL_A * (predicted_temp - AMBIENT_C)
+                + MODEL_B * duty
             )
 
-            error = TARGET_C - predicted_temp
+            error = target_c - predicted_temp
             cost += WEIGHT_TRACKING * (error ** 2)
 
-<<<<<<< Updated upstream
-            if predicted_temp > TARGET_C + 10:
-                cost += WEIGHT_OVERSHOOT * ((predicted_temp - TARGET_C) ** 2)
-=======
             if predicted_temp > target_c + 3:
                 cost += WEIGHT_OVERSHOOT * ((predicted_temp - target_c) ** 2)
->>>>>>> Stashed changes
 
             if predicted_temp > MAX_SAFE_TEMP_C:
                 cost += 100000
@@ -153,13 +163,8 @@ with open(log_file, "w", newline="") as file:
     ])
 
 
-<<<<<<< Updated upstream
-print("Coffee roaster MPC + fan control started.")
-print("Dashboard controls: IDLE / RUN / STOP / E_STOP")
-print(f"Target temperature: {TARGET_C} °C")
-=======
+
 print(f"Default target temperature: {TARGET_C} °C")
->>>>>>> Stashed changes
 print(f"Logging to: {log_file}")
 
 
@@ -172,7 +177,7 @@ try:
 
     while True:
         elapsed = round(time.time() - start_time, 1)
-        command = read_command()
+        command, target_c = read_command()
 
         if command == "E_STOP":
             heater.off()
@@ -181,10 +186,7 @@ try:
             break
 
         try:
-            temp_c = sensor.temperature
-
-            if temp_c is None:
-                raise RuntimeError("No temperature reading")
+            temp_c = read_average_temp(samples=8, delay=0.05)
 
             if command == "IDLE":
                 heater_output = 0.0
@@ -195,14 +197,14 @@ try:
                 state = "COOLING_FROM_DASHBOARD"
 
             else:
-                heater_output = calculate_mpc(temp_c)
+                heater_output = calculate_mpc(temp_c, target_c)
                 heater_output = round(heater_output, 1)
 
                 if temp_c > MAX_SAFE_TEMP_C:
                     heater_output = 0.0
                     state = "SAFETY_SHUTDOWN_OVERTEMP"
 
-                elif temp_c > TARGET_C + 15:
+                elif temp_c > target_c + 15:
                     heater_output = 0.0
                     state = "ABOVE_TARGET_HEATER_OFF"
 
@@ -218,7 +220,7 @@ try:
                 writer.writerow([
                     elapsed,
                     round(temp_c, 2),
-                    TARGET_C,
+                    target_c,
                     heater_output,
                     MOTOR_ON_SPEED,
                     state
@@ -226,7 +228,7 @@ try:
 
             print(
                 f"{elapsed}s | Temp: {temp_c:.2f} °C | "
-                f"Target: {TARGET_C:.1f} °C | "
+                f"Target: {target_c:.1f} °C | "
                 f"MPC Heater: {heater_output:.1f}% | "
                 f"Fan: {MOTOR_ON_SPEED:.1f} | {state}"
             )
@@ -255,7 +257,7 @@ try:
                 writer.writerow([
                     elapsed,
                     "NaN",
-                    TARGET_C,
+                    target_c,
                     heater_output,
                     MOTOR_ON_SPEED,
                     state

@@ -22,26 +22,26 @@ const {
 
 const target = ref(100)
 const fanSpeed = ref(100)
-const kp = ref(2.6)
-const ki = ref(0.05)
+const kp = ref(1.8)
+const ki = ref(0.09)
 const kd = ref(0)
 const resetIntegral = ref(false)
-const weightTracking = ref(2)
+const weightTracking = ref(5)
 const weightHeaterChg = ref(0.1)
-const weightOvershoot = ref(5)
-const horizon = ref(30)
+const weightOvershoot = ref(2)
+const horizon = ref(120)
 const resetMpc = ref(false)
 const defaults = ref({
-  kp: 2.6,
-  ki: 0.05,
+  kp: 1.8,
+  ki: 0.09,
   kd: 0,
-  weight_tracking: 2,
+  weight_tracking: 5,
   weight_heater_chg: 0.1,
-  weight_overshoot: 5,
-  horizon: 30,
+  weight_overshoot: 2,
+  horizon: 120,
 })
 
-const controllerMode = ref('pid')
+const controllerMode = ref('mpc')
 const usesMpc = computed(() => controllerMode.value === 'mpc')
 const usesPid = computed(() => controllerMode.value === 'pid')
 
@@ -176,7 +176,7 @@ const statusText = computed(() => {
           <div>
             <h2 class="text-xs font-semibold text-orange-300 uppercase tracking-wider">Heater</h2>
             <p class="text-[10px] text-zinc-500 mt-1">
-              Bench only — main dashboard uses PID.
+              Bench only — main roast API uses HEATER_CONTROLLER from config.py.
             </p>
           </div>
           <div class="grid grid-cols-2 gap-1.5 p-1 rounded-xl bg-black/30 border border-white/10 sm:w-40 shrink-0">

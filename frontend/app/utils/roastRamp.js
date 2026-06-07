@@ -1,4 +1,4 @@
-/** Matches backend/hardware/roast_ramp.py */
+/** Matches backend/hardware/control/roast_ramp.py */
 
 export function sigmoidSetpoint(startTemp, targetTemp, elapsedSec, midpointMin, steepness = 1) {
   const start = Number(startTemp)

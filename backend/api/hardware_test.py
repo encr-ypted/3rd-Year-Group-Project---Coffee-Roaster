@@ -2,9 +2,11 @@
 Hardware bench API — port 8001. Separate from roast api/main.py.
 
 Run on Pi:  python api/hardware_test.py
+            python api/hardware_test.py --lcd
 WebSocket:  ws://<pi>:8001/ws/bench
 """
 
+import argparse
 import asyncio
 import os
 import sys
@@ -17,10 +19,17 @@ import uvicorn
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import config as cfg
-from hardware.manual_control import HardwareTestBench
+from hardware.hardware_test_bench import HardwareTestBench
+from hardware.display.lcd import (
+    LcdLifecycle,
+    add_dashboard_args,
+    dashboard_args_from_namespace,
+    lcd_enabled,
+)
 
 PORT = 8001
 bench = HardwareTestBench()
+lcd_lifecycle = LcdLifecycle()
 clients: list[WebSocket] = []
 
 
@@ -28,7 +37,9 @@ clients: list[WebSocket] = []
 async def lifespan(_app: FastAPI):
     await bench.run()
     asyncio.create_task(_relay())
+    await lcd_lifecycle.start()
     yield
+    await lcd_lifecycle.stop()
     bench.close()
 
 
@@ -183,4 +194,13 @@ async def ws_bench(ws: WebSocket):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Hardware bench API")
+    add_dashboard_args(parser)
+    cli_args, _ = parser.parse_known_args()
+
+    if lcd_enabled(cli_args.lcd):
+        lcd_lifecycle.enabled = True
+        lcd_lifecycle.mode = "bench"
+        lcd_lifecycle.args = dashboard_args_from_namespace(cli_args, mode="bench")
+
     uvicorn.run(app, host="0.0.0.0", port=PORT)

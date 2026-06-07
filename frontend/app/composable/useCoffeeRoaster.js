@@ -225,18 +225,12 @@ export const useCoffeeRoaster = () => {
         });
     };
 
-    const clearHeaterHalt = () => {
-        if (!isConnected.value) return;
-        sendJson({ action: 'HEATER_CLEAR_HALT' });
-    };
-
     const getSystemState = () => {
         sendJson({ action: 'GET_STATE' });
     };
 
     return {
         connect,
-        disconnect,
         loadProfiles,
         isConnected,
         lastError,
@@ -252,7 +246,6 @@ export const useCoffeeRoaster = () => {
         finishRoast,
         emergencyStop,
         toggleTestSpin,
-        clearHeaterHalt,
         getSystemState,
     };
 };

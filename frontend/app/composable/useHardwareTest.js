@@ -36,21 +36,21 @@ const live = ref({
 
   target: null,
 
-  controller: 'pid',
+  controller: 'mpc',
 
-  pidKp: 2.6,
+  pidKp: 1.8,
 
-  pidKi: 0.05,
+  pidKi: 0.09,
 
   pidKd: 0,
 
-  weightTracking: 2,
+  weightTracking: 5,
 
   weightHeaterChg: 0.1,
 
-  weightOvershoot: 5,
+  weightOvershoot: 2,
 
-  horizon: 30,
+  horizon: 120,
 
   sensorFault: null,
 

@@ -1,5 +1,5 @@
 """
-Model-predictive heater control (ported from sami_backend/coffeeControlCodeMPC.py).
+Model-predictive heater control — params from config.py.
 
 Predicts temperature over a horizon for each candidate duty cycle and picks
 the duty that minimises tracking error, overshoot, and abrupt heater changes.

@@ -1,17 +1,12 @@
-"""
-Verified hardware bench — GPIO wiring and heater control checks.
-
-Run:  python api/hardware_test.py   (port 8001)
-Do not run api/main.py at the same time.
-"""
+"""Hardware bench — GPIO wiring and heater control checks (used by api/hardware_test.py)."""
 
 import asyncio
 
 import config as cfg
-from hardware.heater import RoasterHeater
-from hardware.heater_control import create_heater_controller
-from hardware.motor import RoasterMotor
-from hardware.thermocouple import RoasterThermocouple, read_thermocouple
+from hardware.control.heater_control import create_heater_controller
+from hardware.devices.heater import RoasterHeater
+from hardware.devices.motor import RoasterMotor
+from hardware.devices.thermocouple import RoasterThermocouple, read_thermocouple
 
 
 class HardwareTestBench:
@@ -166,9 +161,9 @@ class HardwareTestBench:
             "controller": self.controller_mode,
         }
         ctrl = self.heater_controller
-        if hasattr(ctrl, "get_mpc_config"):
+        if self.controller_mode == "mpc":
             payload.update(ctrl.get_mpc_config())
-        elif hasattr(ctrl, "get_pid_config"):
+        else:
             g = ctrl.get_pid_config()
             payload["pid_kp"] = g["kp"]
             payload["pid_ki"] = g["ki"]

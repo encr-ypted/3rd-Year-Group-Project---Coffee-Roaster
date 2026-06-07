@@ -1,17 +1,14 @@
 """
-Minimal ST7796 SPI LCD smoke test for the coffee roaster Raspberry Pi.
+ST7796 SPI LCD driver for the coffee roaster Raspberry Pi.
 
-Default wiring uses SPI1 for the LCD so image transfers do not share SPI0 with
-the MAX31855 thermocouple. Heater SSR is GPIO 23 (not GPIO 18 — SPI1 CE0). For
-LCD-only SPI1 use:
+Uses SPI1 so transfers do not share SPI0 with the MAX31855 thermocouple.
+Heater SSR is GPIO 23. Enable SPI1 with:
 
     dtoverlay=spi1-1cs,cs0_pin=17
 
-Run on the Raspberry Pi:
-    python backend/hardware/lcd_st7796_test.py
-
-Optional image test if Pillow is installed:
-    python backend/hardware/lcd_st7796_test.py --image test.jpg
+Wiring smoke test (optional):
+    python backend/hardware/display/st7796.py
+    python backend/hardware/display/st7796.py --image test.jpg
 """
 
 import argparse
@@ -23,7 +20,7 @@ try:
     import spidev
 except ImportError as exc:
     raise SystemExit(
-        "This test must run on the Raspberry Pi with RPi.GPIO and spidev "
+        "LCD driver must run on the Raspberry Pi with RPi.GPIO and spidev "
         "installed. Try: pip install spidev RPi.GPIO"
     ) from exc
 
@@ -240,7 +237,6 @@ def make_test_card(width, height):
             band = min(len(colors) - 1, x * len(colors) // width)
             red, green, blue = colors[band]
 
-            # Add a visible border, center cross, and diagonal gradient cue.
             if x < 6 or y < 6 or x >= width - 6 or y >= height - 6:
                 red, green, blue = 255, 255, 255
             elif abs(x - width // 2) < 2 or abs(y - height // 2) < 2:
@@ -276,7 +272,7 @@ def load_image(path, width, height, pixel_brightness=LCD_PIXEL_BRIGHTNESS):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ST7796 SPI LCD smoke test")
+    parser = argparse.ArgumentParser(description="ST7796 SPI LCD wiring smoke test")
     parser.add_argument("--image", help="Optional image file to display")
     parser.add_argument("--speed", type=int, default=16_000_000, help="SPI speed in Hz")
     parser.add_argument("--bus", type=int, default=SPI_BUS, help="SPI bus number")

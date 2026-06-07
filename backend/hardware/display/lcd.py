@@ -1,14 +1,12 @@
 """
-Landscape LCD dashboard for the coffee roaster.
+Live LCD dashboard — WebSocket client + Pillow UI rendered over SPI.
 
-Run the main roaster API first:
-    python backend/api/main.py
+Standalone:
+    python backend/hardware/display/lcd.py
 
-Then run this display client on the Raspberry Pi:
-    python backend/hardware/lcd_dashboard.py
-
-For the hardware bench server:
-    python backend/hardware/lcd_dashboard.py --mode bench
+Coupled to the API (LCD starts/stops with the server):
+    python backend/api/main.py --lcd
+    python backend/api/hardware_test.py --lcd
 """
 
 import argparse
@@ -16,6 +14,7 @@ from collections import deque
 from dataclasses import dataclass, field
 import json
 import math
+import threading
 import time
 
 try:
@@ -34,7 +33,10 @@ except ImportError as exc:
         "LCD dashboard needs websocket-client. Try: pip install websocket-client"
     ) from exc
 
-from lcd_st7796_test import (
+import config as cfg
+
+from hardware.control.roast_ramp import effective_setpoint
+from hardware.display.st7796 import (
     LCD_BACKLIGHT_BRIGHTNESS,
     LCD_CS,
     LCD_PIXEL_BRIGHTNESS,
@@ -43,7 +45,6 @@ from lcd_st7796_test import (
     ST7796Display,
     image_to_rgb565,
 )
-from roast_ramp import effective_setpoint
 
 
 DEFAULT_WS_URLS = {
@@ -577,7 +578,90 @@ def connect_ws(url, mode):
     return ws
 
 
-def run_dashboard(args):
+def _sleep_or_stop(seconds, stop_event):
+    if stop_event is None:
+        time.sleep(seconds)
+        return False
+    return stop_event.wait(timeout=seconds)
+
+
+def build_default_args(mode="roast"):
+    """Dashboard options aligned with config.py — used when the API starts the LCD."""
+    fps = getattr(cfg, "LCD_FPS", 2.0)
+    reconnect = getattr(cfg, "LCD_RECONNECT_DELAY_S", 2.0)
+
+    return argparse.Namespace(
+        mode=mode,
+        ws_url=None,
+        fps=fps,
+        reconnect_delay=reconnect,
+        speed=16_000_000,
+        bus=SPI_BUS,
+        device=SPI_DEVICE,
+        cs_pin=LCD_CS,
+        rotation=90,
+        backlight=LCD_BACKLIGHT_BRIGHTNESS,
+        pixel_brightness=LCD_PIXEL_BRIGHTNESS,
+        no_inversion=False,
+    )
+
+
+def add_dashboard_args(parser):
+    parser.add_argument(
+        "--lcd",
+        action="store_true",
+        help="Start the SPI LCD dashboard in the same process (stops when the API exits)",
+    )
+    parser.add_argument("--ws-url", help="Override dashboard WebSocket URL")
+    parser.add_argument("--fps", type=float, default=2.0, help="LCD refresh rate")
+    parser.add_argument("--reconnect-delay", type=float, default=2.0)
+    parser.add_argument("--speed", type=int, default=16_000_000, help="SPI speed in Hz")
+    parser.add_argument("--bus", type=int, default=SPI_BUS, help="SPI bus number")
+    parser.add_argument(
+        "--device", type=int, default=SPI_DEVICE, help="SPI device/chip select number"
+    )
+    parser.add_argument("--cs-pin", type=int, default=LCD_CS, help="LCD CS BCM GPIO")
+    parser.add_argument(
+        "--rotation",
+        type=int,
+        default=90,
+        choices=(0, 90, 180, 270),
+        help="Display rotation in degrees",
+    )
+    parser.add_argument(
+        "--backlight",
+        type=float,
+        default=LCD_BACKLIGHT_BRIGHTNESS,
+        help="Backlight PWM duty from 0.0 to 1.0",
+    )
+    parser.add_argument(
+        "--pixel-brightness",
+        type=float,
+        default=LCD_PIXEL_BRIGHTNESS,
+        help="Software brightness boost for dashboard frames",
+    )
+    parser.add_argument(
+        "--no-inversion",
+        action="store_true",
+        help="Disable display inversion",
+    )
+
+
+def start_dashboard_thread(args, stop_event=None):
+    """Run the LCD loop on a background thread; return (thread, stop_event)."""
+    if stop_event is None:
+        stop_event = threading.Event()
+    thread = threading.Thread(
+        target=run_dashboard,
+        args=(args, stop_event),
+        name="lcd-dashboard",
+        daemon=True,
+    )
+    thread.start()
+    return thread, stop_event
+
+
+def run_dashboard(args, stop_event=None):
     ws_url = args.ws_url or DEFAULT_WS_URLS[args.mode]
     state = DashboardState(mode=args.mode)
     fonts = load_fonts()
@@ -599,7 +683,7 @@ def run_dashboard(args):
 
     try:
         lcd.initialize()
-        while True:
+        while not (stop_event and stop_event.is_set()):
             if ws is None:
                 state.connected = False
                 state.error = f"Connecting to {ws_url}"
@@ -621,8 +705,12 @@ def run_dashboard(args):
                             pixel_brightness=pixel_brightness,
                         )
                     )
-                    time.sleep(args.reconnect_delay)
+                    if _sleep_or_stop(args.reconnect_delay, stop_event):
+                        break
                     continue
+
+            if stop_event and stop_event.is_set():
+                break
 
             try:
                 raw = ws.recv()
@@ -655,42 +743,62 @@ def run_dashboard(args):
         lcd.close()
 
 
+class LcdLifecycle:
+    def __init__(self, enabled=False, mode="roast", args=None):
+        self.enabled = enabled
+        self.mode = mode
+        self.args = args
+        self._stop_event = None
+        self._thread = None
+
+    async def start(self):
+        if not self.enabled:
+            return
+        dashboard_args = self.args or build_default_args(self.mode)
+        self._thread, self._stop_event = start_dashboard_thread(dashboard_args)
+
+    async def stop(self):
+        if not self._thread or not self._stop_event:
+            return
+        self._stop_event.set()
+        self._thread.join(timeout=8.0)
+        self._thread = None
+        self._stop_event = None
+
+
+def lcd_enabled(cli_flag=False) -> bool:
+    return bool(cli_flag or getattr(cfg, "LCD_ENABLED", False))
+
+
+def dashboard_args_from_namespace(ns, mode="roast"):
+    """Build LCD options from API argparse namespace (--lcd plus optional overrides)."""
+    args = build_default_args(mode)
+    for field in (
+        "ws_url",
+        "fps",
+        "reconnect_delay",
+        "speed",
+        "bus",
+        "device",
+        "cs_pin",
+        "rotation",
+        "backlight",
+        "pixel_brightness",
+        "no_inversion",
+    ):
+        if hasattr(ns, field) and getattr(ns, field) is not None:
+            setattr(args, field, getattr(ns, field))
+    return args
+
+
 def main():
+    import os
+    import sys
+
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
     parser = argparse.ArgumentParser(description="ST7796 landscape roaster dashboard")
     parser.add_argument("--mode", choices=("roast", "bench"), default="roast")
-    parser.add_argument("--ws-url", help="Override WebSocket URL")
-    parser.add_argument("--fps", type=float, default=2.0, help="LCD refresh rate")
-    parser.add_argument("--reconnect-delay", type=float, default=2.0)
-    parser.add_argument("--speed", type=int, default=16_000_000, help="SPI speed in Hz")
-    parser.add_argument("--bus", type=int, default=SPI_BUS, help="SPI bus number")
-    parser.add_argument(
-        "--device", type=int, default=SPI_DEVICE, help="SPI device/chip select number"
-    )
-    parser.add_argument("--cs-pin", type=int, default=LCD_CS, help="LCD CS BCM GPIO")
-    parser.add_argument(
-        "--rotation",
-        type=int,
-        default=90,
-        choices=(0, 90, 180, 270),
-        help="Display rotation in degrees",
-    )
-    parser.add_argument(
-        "--backlight",
-        type=float,
-        default=LCD_BACKLIGHT_BRIGHTNESS,
-        help="Backlight PWM duty from 0.0 to 1.0 (default: full brightness)",
-    )
-    parser.add_argument(
-        "--pixel-brightness",
-        type=float,
-        default=LCD_PIXEL_BRIGHTNESS,
-        help="Software brightness boost for dashboard frames (1.0 = unchanged)",
-    )
-    parser.add_argument(
-        "--no-inversion",
-        action="store_true",
-        help="Disable display inversion (try if the panel looks washed out)",
-    )
+    add_dashboard_args(parser)
     args = parser.parse_args()
     run_dashboard(args)
 

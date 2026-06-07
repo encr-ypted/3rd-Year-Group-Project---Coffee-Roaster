@@ -29,10 +29,16 @@
       "timestamp": 42.5,
       "temp": 187.3,
       "target": 210.0,
-      "ror": 8.2,
+      "setpoint": 185.2,
+      "ramp_midpoint_min": 2.0,
+      "ramp_steepness": 1.0,
       "heater_pwm": 65,
       "fan_pwm": 100,
-      "state": "ROASTING"
+      "state": "ROASTING",
+      "heater_halted": false,
+      "sensor_fault": null,
+      "can_resume": false,
+      "test_spin": false
     },
     "system_state": {
       "type": "system_state",
@@ -40,7 +46,7 @@
     },
     "error": {
       "type": "error",
-      "msg": "Thermocouple fault — emergency shutdown"
+      "msg": "Thermocouple fault: open circuit — roast continues; check probe wiring"
     }
   },
 

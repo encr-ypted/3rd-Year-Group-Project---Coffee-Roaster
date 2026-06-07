@@ -1,8 +1,8 @@
 """Factory for roast/bench heater control (MPC or legacy PID)."""
 
 import config as cfg
-from hardware.mpc import MPCController
-from hardware.pid import PIDController
+from hardware.control.mpc import MPCController
+from hardware.control.pid import PIDController
 
 
 def create_heater_controller(mode=None):

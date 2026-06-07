@@ -1,0 +1,20 @@
+[Unit]
+Description=Smart Coffee Roaster API (with LCD dashboard)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# User/Group/WorkingDirectory/ExecStart rewritten by install-service.sh
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/Desktop/CoffeeController/backend
+Environment=PYTHONUNBUFFERED=1
+# SPI/GPIO access — service user needs gpio,spi: sudo usermod -aG gpio,spi <user>
+# Python: project venv at CoffeeController/.venv (paths rewritten by install-service.sh)
+ExecStart=/home/pi/Desktop/CoffeeController/.venv/bin/python3 api/main.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

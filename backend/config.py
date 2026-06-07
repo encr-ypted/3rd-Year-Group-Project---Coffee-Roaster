@@ -16,7 +16,7 @@ MAX_SAFE_TEMP_C = 250.0
 OVERSHOOT_CUTOFF_C = 15.0
 PREHEAT_THRESHOLD_C = 150.0
 
-#Fan stays on until it cools till this temperature after a roast
+# Fan stays on until it cools to this temperature after a roast
 COOL_DOWN_TEMP_C = 33
 
 # GPIO (BCM pins for gpiozero)
@@ -26,7 +26,6 @@ FAN_PWM_GPIO = 12
 FAN_PWM_FREQUENCY_HZ = 1000
 
 # MAX31855 on SPI0 — SCLK 11, MOSI 10, MISO 9 (enable: dtparam=spi=on)
-# Single probe only — do not use THERMOCOUPLE_BEAN_* / THERMOCOUPLE_AIR_* (removed).
 THERMOCOUPLE_CS_GPIO = 7
 THERMOCOUPLE_SCLK_GPIO = 11
 THERMOCOUPLE_DO_GPIO = 9
@@ -47,7 +46,7 @@ HEATER_CONTROLLER = "mpc"
 # Hardware bench initial mode (switchable from the bench UI without restart)
 BENCH_DEFAULT_CONTROLLER = "mpc"
 
-# PID (legacy — set HEATER_CONTROLLER = "pid" to use)
+# PID — set HEATER_CONTROLLER = "pid" to use
 PID_KP = 1.8
 PID_KI = 0.09
 PID_KD = 0
@@ -55,7 +54,7 @@ PID_OUT_MIN = 0.0
 PID_OUT_MAX = 100.0
 PID_INTEGRAL_LIMIT = 500.0
 
-# MPC — first-order roast model + duty search (sami_backend/coffeeControlCodeMPC.py)
+# MPC — first-order roast model + duty search (see hardware/control/mpc.py)
 MPC_AMBIENT_C = 25.0
 MPC_MODEL_A = 0.9978
 MPC_MODEL_B = 0.0058
@@ -69,7 +68,7 @@ MPC_UNSAFE_PENALTY = 100000.0
 MPC_OUT_MIN = 0.0
 MPC_OUT_MAX = 100.0
 
-# Sigmoid setpoint ramp defaults (see hardware/roast_ramp.py)
+# Sigmoid setpoint ramp defaults (see hardware/control/roast_ramp.py)
 #   setpoint = span / (1 + exp(-steepness * (t_min - midpoint_min))) + start
 DEFAULT_RAMP_MIDPOINT_MIN = 2.0
 DEFAULT_RAMP_STEEPNESS = 1.0
@@ -161,3 +160,12 @@ _log_dir = os.getenv("ROASTER_LOG_FOLDER", "logs")
 LOG_FOLDER = _log_dir if os.path.isabs(_log_dir) else os.path.join(_BACKEND_DIR, _log_dir)
 LOG_INDEX_FILE = "roasts_index.csv"
 HARDWARE_MODE = os.getenv("ROASTER_HARDWARE_MODE", "pi")
+
+# LCD dashboard — on by default on the Pi; set ROASTER_LCD=0 to disable
+_lcd_env = os.getenv("ROASTER_LCD")
+if _lcd_env is not None:
+    LCD_ENABLED = _lcd_env.lower() in ("1", "true", "yes")
+else:
+    LCD_ENABLED = HARDWARE_MODE == "pi"
+LCD_FPS = 2.0
+LCD_RECONNECT_DELAY_S = 2.0

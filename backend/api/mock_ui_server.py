@@ -253,7 +253,7 @@ class RoastSimulator:
                 self.heater_pwm = 0
                 self.fan_pwm = 100
                 self.temp = max(33.0, self.temp - 0.35 + noise * 0.3)
-                if self.temp <= 34.0:
+                if self.temp <= 33.0:
                     self.state = "IDLE"
                     self.fan_pwm = 0
                     self.target = 0.0
@@ -299,10 +299,10 @@ class BenchSimulator:
         self.target = 100.0
         self.controller = "mpc"
         self.pid_kp, self.pid_ki, self.pid_kd = 1.8, 0.09, 0.0
-        self.weight_tracking = 2.0
-        self.weight_heater_chg = 0.3
-        self.weight_overshoot = 5.0
-        self.horizon = 30
+        self.weight_tracking = 5.0
+        self.weight_heater_chg = 0.1
+        self.weight_overshoot = 2.0
+        self.horizon = 120
 
     def snapshot(self, msg_type: str = "bench_telemetry") -> dict:
         with self._lock:
@@ -474,10 +474,10 @@ class Handler(BaseHTTPRequestHandler):
                 "defaults": {
                     "pid": {"kp": 1.8, "ki": 0.09, "kd": 0.0},
                     "mpc": {
-                        "weight_tracking": 2.0,
-                        "weight_heater_chg": 0.3,
-                        "weight_overshoot": 5.0,
-                        "horizon": 30,
+                        "weight_tracking": 5.0,
+                        "weight_heater_chg": 0.1,
+                        "weight_overshoot": 2.0,
+                        "horizon": 120,
                     },
                 },
                 **bench.snapshot(),

@@ -1,13 +1,20 @@
 """
 Sigmoid roast setpoint ramp.
 
-    setpoint(t) = (target - start) / (1 + exp(-steepness * (t_min - midpoint_min))) + start
+Base logistic (minutes):
 
-Same shape as the prototype: 80 / (1 + exp(-(t - 2))) + 160, but scaled from the
-actual bean start temperature up to each profile's target_c.
+    raw(t) = (target - start) / (1 + exp(-steepness * (t - midpoint))) + start
+
+Remapped so setpoint(0) == start (bean temp at roast start) and still reaches target.
+Without anchoring, raw(0) sits above start and the chart looks misaligned early on.
 """
 
 import math
+
+
+def _logistic_setpoint(start, target, t_min, midpoint_min, steepness):
+    span = target - start
+    return span / (1.0 + math.exp(-steepness * (t_min - midpoint_min))) + start
 
 
 def effective_setpoint(
@@ -26,6 +33,11 @@ def effective_setpoint(
         return target
 
     t_min = max(0.0, float(elapsed_s)) / 60.0
-    span = target - start
-    ramped = span / (1.0 + math.exp(-steepness * (t_min - midpoint_min))) + start
-    return min(ramped, target)
+    at_zero = _logistic_setpoint(start, target, 0.0, midpoint_min, steepness)
+    raw = _logistic_setpoint(start, target, t_min, midpoint_min, steepness)
+
+    if target <= at_zero or abs(target - at_zero) < 1e-9:
+        return min(raw, target)
+
+    remapped = start + (raw - at_zero) / (target - at_zero) * (target - start)
+    return min(remapped, target)

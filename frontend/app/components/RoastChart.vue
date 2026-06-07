@@ -9,7 +9,7 @@ import {
   Tooltip,
   Filler,
 } from 'chart.js'
-import { buildPlannedTrajectory } from '~/utils/roastRamp'
+import { buildPlannedTrajectory, planFromTelemetry } from '~/utils/roastRamp'
 import { emaSmooth } from '~/utils/smoothSeries'
 
 /** Display smoothing — raw telemetry is unchanged in roastDataPoints. */
@@ -55,13 +55,23 @@ const hasPlan = computed(() => props.plan?.target > 0 && props.plan?.startTemp !
 const hasLive = computed(() => props.points.length > 0)
 const showChart = computed(() => hasPlan.value || hasLive.value)
 
+const chartPlan = computed(() => {
+  if (!hasPlan.value) return null
+  if (props.roasting && props.plan?.locked) {
+    return planFromTelemetry(props.plan, props.points)
+  }
+  return props.plan
+})
+
+const plannedStepSec = computed(() => (props.roasting ? 0.5 : 20))
+
 const maxTimeSec = computed(() => {
   let max = 120
   if (hasLive.value) {
     max = Math.max(max, ...props.points.map((p) => p.timestamp ?? 0))
   }
-  if (hasPlan.value) {
-    const planned = buildPlannedTrajectory(props.plan, 20)
+  if (chartPlan.value) {
+    const planned = buildPlannedTrajectory(chartPlan.value, plannedStepSec.value)
     if (planned.length) {
       max = Math.max(max, planned[planned.length - 1].x)
     }
@@ -104,10 +114,10 @@ function smoothLive(series, alpha) {
 function buildDatasets(colors) {
   const datasets = []
 
-  if (hasPlan.value) {
+  if (chartPlan.value) {
     datasets.push({
-      label: 'Planned profile',
-      data: buildPlannedTrajectory(props.plan, 20),
+      label: 'Planned setpoint',
+      data: buildPlannedTrajectory(chartPlan.value, plannedStepSec.value),
       borderColor: colors.planned,
       borderDash: [8, 4],
       borderWidth: 2,
@@ -250,7 +260,7 @@ function syncChart() {
 }
 
 watch(
-  () => [props.points, props.target, props.plan, props.roasting, props.dark],
+  () => [props.points, props.target, props.plan, props.roasting, props.dark, chartPlan.value],
   () => syncChart(),
   { deep: true },
 )
@@ -281,7 +291,7 @@ onUnmounted(() => {
       class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-6 text-center"
     >
       <p class="text-xs font-semibold text-zinc-500">No profile selected</p>
-      <p class="text-[10px] mt-1 text-zinc-600">Choose a roast profile to preview the planned curve</p>
+      <p class="text-[10px] mt-1 text-zinc-600">Choose a profile to preview the setpoint ramp from current bean temp</p>
     </div>
     <p
       v-else-if="!roasting && hasPlan"

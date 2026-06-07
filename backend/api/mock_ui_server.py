@@ -77,9 +77,17 @@ def sigmoid_setpoint(start, target, elapsed_s, midpoint_min, steepness):
     if target <= start:
         return target
     t_min = max(0.0, elapsed_s) / 60.0
-    span = target - start
-    ramped = span / (1.0 + math.exp(-steepness * (t_min - midpoint_min))) + start
-    return min(ramped, target)
+
+    def logistic(t_m):
+        span = target - start
+        return span / (1.0 + math.exp(-steepness * (t_m - midpoint_min))) + start
+
+    at_zero = logistic(0.0)
+    raw = logistic(t_min)
+    if target <= at_zero or abs(target - at_zero) < 1e-9:
+        return min(raw, target)
+    remapped = start + (raw - at_zero) / (target - at_zero) * (target - start)
+    return min(remapped, target)
 
 
 def ws_accept_key(key: str) -> str:
@@ -277,6 +285,7 @@ class RoastSimulator:
                 "temp": round(self.temp, 1),
                 "target": self.target,
                 "setpoint": round(self.setpoint, 1),
+                "start_temp": round(self.start_temp, 1),
                 "ramp_midpoint_min": self.ramp_mid,
                 "ramp_steepness": self.ramp_k,
                 "heater_pwm": self.heater_pwm,

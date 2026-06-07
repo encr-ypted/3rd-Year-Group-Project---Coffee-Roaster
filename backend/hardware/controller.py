@@ -60,6 +60,7 @@ class RoasterController:
             "temp": round(self.current_temp, 1) if self._sensor_fault is None else None,
             "target": self.target_temp,
             "setpoint": round(self.effective_target, 1),
+            "start_temp": round(self._roast_start_temp, 1),
             "ramp_midpoint_min": self._ramp_midpoint_min,
             "ramp_steepness": self._ramp_steepness,
             "heater_pwm": round(self.heater_output),

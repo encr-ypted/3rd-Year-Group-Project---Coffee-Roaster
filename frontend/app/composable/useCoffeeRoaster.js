@@ -36,7 +36,38 @@ const liveData = ref({
 
 const roastDataPoints = ref([]);
 const roastPlan = ref(null);
+/** Bean temp at roast start — locked from Pi telemetry for chart alignment. */
+const roastStartTemp = ref(null);
 const sensorFaultHold = createSensorFaultHold();
+
+function lockRoastStartTemp(message) {
+    if (message.start_temp != null && Number.isFinite(message.start_temp)) {
+        return message.start_temp;
+    }
+    if (message.timestamp <= 1 && message.temp != null && Number.isFinite(message.temp)) {
+        return message.temp;
+    }
+    return null;
+}
+
+function syncRoastPlanFromTelemetry(message) {
+    if (!roastPlan.value || message.state === 'IDLE') {
+        return;
+    }
+
+    const lockedStart = lockRoastStartTemp(message);
+    if (roastStartTemp.value == null && lockedStart != null) {
+        roastStartTemp.value = lockedStart;
+    }
+
+    roastPlan.value = {
+        startTemp: roastStartTemp.value ?? roastPlan.value.startTemp,
+        target: message.target ?? roastPlan.value.target,
+        midpointMin: message.ramp_midpoint_min ?? roastPlan.value.midpointMin,
+        steepness: message.ramp_steepness ?? roastPlan.value.steepness,
+        locked: roastStartTemp.value != null,
+    };
+}
 
 const sendJson = (payload) => {
     if (!socket.value || socket.value.readyState !== WebSocket.OPEN) return false;
@@ -113,15 +144,10 @@ export const useCoffeeRoaster = () => {
                         message.sensor_fault ?? null,
                     );
 
-                    if (roastPlan.value && message.state !== 'IDLE') {
-                        roastPlan.value = {
-                            ...roastPlan.value,
-                            target: message.target ?? roastPlan.value.target,
-                            midpointMin:
-                                message.ramp_midpoint_min ?? roastPlan.value.midpointMin,
-                            steepness:
-                                message.ramp_steepness ?? roastPlan.value.steepness,
-                        };
+                    if (message.state === 'IDLE') {
+                        roastStartTemp.value = null;
+                    } else {
+                        syncRoastPlanFromTelemetry(message);
                     }
 
                     if (message.state !== 'IDLE' && message.temp != null) {
@@ -192,6 +218,7 @@ export const useCoffeeRoaster = () => {
     const startRoast = (profileId) => {
         if (!isConnected.value) return;
         roastDataPoints.value = [];
+        roastStartTemp.value = null;
         const profile = roastProfiles.value.find((p) => p.id === profileId);
         setRoastPlanFromProfile(profile);
         sendJson({ action: 'START_ROAST', profile_id: profileId });

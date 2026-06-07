@@ -470,7 +470,7 @@ const c = computed(() => isDark.value ? {
               <div>
                 <h3 class="text-xs font-bold uppercase tracking-widest" :class="c.secTitle">Roast Profile</h3>
                 <p class="text-[10px] mt-0.5" :class="c.secSub">
-                  Planned curve &amp; live temperature
+                  Setpoint ramp &amp; live bean temperature
                 </p>
               </div>
             </div>

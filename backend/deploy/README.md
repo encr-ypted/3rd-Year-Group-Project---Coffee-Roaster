@@ -212,6 +212,19 @@ If you started the API by hand (`python3 api/main.py`) and never installed the s
 
 ## Troubleshooting
 
+### `env: 'bash\r': No such file or directory`
+
+The deploy scripts have **Windows line endings (CRLF)**. Fix on the Pi:
+
+```bash
+cd ~/Desktop/CoffeeController
+sed -i 's/\r$//' deploy/*.sh
+chmod +x deploy/*.sh
+sudo ./deploy/install-service.sh
+```
+
+(`dos2unix deploy/*.sh` also works if installed.) The repo uses `.gitattributes` to keep `*.sh` as LF — re-clone or `git pull` after that file is present.
+
 ### Unit not found
 
 The service was never installed. Run `sudo ./deploy/install-service.sh`.

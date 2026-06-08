@@ -25,10 +25,10 @@ app.add_middleware(
 
 
 ROAST_PROFILES = [
-    {"id": "light", "name": "Light", "desc": "Fruity & bright", "target_c": 196.0},
-    {"id": "medium", "name": "Medium", "desc": "Balanced & smooth", "target_c": 210.0},
-    {"id": "medium-dark", "name": "Medium-Dark", "desc": "Rich & full-bodied", "target_c": 220.0},
-    {"id": "dark", "name": "Dark", "desc": "Bold & smoky", "target_c": 230.0},
+    {"id": "light", "name": "Light", "desc": "Fruity & bright", "target_c": 196.0, "ramp_midpoint_min": 2.0, "ramp_steepness": 1.0},
+    {"id": "medium", "name": "Medium", "desc": "Balanced & smooth", "target_c": 210.0, "ramp_midpoint_min": 2.0, "ramp_steepness": 1.0},
+    {"id": "medium-dark", "name": "Medium-Dark", "desc": "Rich & full-bodied", "target_c": 220.0, "ramp_midpoint_min": 2.0, "ramp_steepness": 1.0},
+    {"id": "dark", "name": "Dark", "desc": "Bold & smoky", "target_c": 230.0, "ramp_midpoint_min": 2.0, "ramp_steepness": 1.0},
 ]
 
 
@@ -102,6 +102,10 @@ def get_latest_row():
             "timestamp": 0,
             "temp": 0,
             "target": last_target_c,
+            "setpoint": last_target_c,
+            "start_temp": 0,
+            "ramp_midpoint_min": 2.0,
+            "ramp_steepness": 1.0,
             "ror": 0,
             "heater_pwm": 0,
             "fan_pwm": 0,
@@ -127,14 +131,21 @@ def get_latest_row():
         if raw_state == "SENSOR_ERROR_KEEPING_DUTY":
             sensor_fault = "Sensor fault, keeping previous duty"
 
+        raw_fan = safe_float(latest.get("fan_speed", 1.0))
+        fan_pwm = (1.0 - raw_fan) * 100
+
         return {
             "type": "telemetry",
             "timestamp": safe_float(latest.get("time_s", 0)),
             "temp": safe_float(latest.get("temp_c", 0)),
             "target": safe_float(latest.get("target_c", last_target_c)),
+            "setpoint": safe_float(latest.get("setpoint_c", latest.get("target_c", last_target_c))),
+            "start_temp": safe_float(latest.get("start_temp_c", 0)),
+            "ramp_midpoint_min": safe_float(latest.get("ramp_midpoint_min", 2.0)),
+            "ramp_steepness": safe_float(latest.get("ramp_steepness", 1.0)),
             "ror": 0,
             "heater_pwm": safe_float(latest.get("heater_output_percent", 0)),
-            "fan_pwm": safe_float(latest.get("fan_speed", 0)) * 100,
+            "fan_pwm": fan_pwm,
             "state": frontend_state,
             "heater_halted": False,
             "can_resume": frontend_state == "COOLING",
@@ -181,9 +192,10 @@ async def websocket_endpoint(websocket: WebSocket):
             action = data.get("action")
 
             if action == "GET_STATE":
+                latest = get_latest_row()
                 await websocket.send_json({
                     "type": "system_state",
-                    "state": "IDLE",
+                    "state": latest.get("state", "IDLE"),
                 })
 
             elif action == "START_ROAST":

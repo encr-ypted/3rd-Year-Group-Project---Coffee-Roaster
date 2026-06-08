@@ -1,17 +1,14 @@
 """
-Minimal ST7796 SPI LCD smoke test for the coffee roaster Raspberry Pi.
+ST7796 SPI LCD driver for the coffee roaster Raspberry Pi.
 
-Default wiring intentionally uses SPI1 so LCD image transfers do not share the
-MAX31855 thermocouple bus on SPI0. SPI1 CE0 normally uses BCM GPIO 18, which is
-already the heater SSR pin in this project, so remap SPI1 CS to BCM GPIO 17:
+Uses SPI1 so transfers do not share SPI0 with the MAX31855 thermocouple.
+Heater SSR is GPIO 23. Enable SPI1 with:
 
     dtoverlay=spi1-1cs,cs0_pin=17
 
-Run on the Raspberry Pi:
-    python backend/hardware/lcd_st7796_test.py
-
-Optional image test if Pillow is installed:
-    python backend/hardware/lcd_st7796_test.py --image test.jpg
+Wiring smoke test (optional):
+    python backend/hardware/display/st7796.py
+    python backend/hardware/display/st7796.py --image test.jpg
 """
 
 import argparse
@@ -23,7 +20,7 @@ try:
     import spidev
 except ImportError as exc:
     raise SystemExit(
-        "This test must run on the Raspberry Pi with RPi.GPIO and spidev "
+        "LCD driver must run on the Raspberry Pi with RPi.GPIO and spidev "
         "installed. Try: pip install spidev RPi.GPIO"
     ) from exc
 
@@ -36,9 +33,12 @@ SPI_BUS = 1
 SPI_DEVICE = 0  # /dev/spidev1.0, with SPI1 CS remapped to BCM GPIO 17
 
 LCD_CS = 17
-LCD_DC = 25
+LCD_RS = 25
 LCD_RST = 24
-LCD_BL = 23
+LCD_LED = 22  # GPIO 23 reserved for heater SSR (config.HEATER_GPIO)
+
+LCD_BACKLIGHT_BRIGHTNESS = 1.0  # 0.0–1.0 PWM duty on the backlight pin
+LCD_PIXEL_BRIGHTNESS = 1.25  # software boost for images and dashboard frames
 
 
 class ST7796Display:
@@ -50,10 +50,12 @@ class ST7796Display:
         bus=SPI_BUS,
         device=SPI_DEVICE,
         cs_pin=LCD_CS,
-        dc_pin=LCD_DC,
+        dc_pin=LCD_RS,
         rst_pin=LCD_RST,
-        bl_pin=LCD_BL,
+        bl_pin=LCD_LED,
         speed_hz=16_000_000,
+        backlight_brightness=LCD_BACKLIGHT_BRIGHTNESS,
+        display_inversion=True,
     ):
         self.rotation = rotation % 360
         if self.rotation not in (0, 90, 180, 270):
@@ -74,6 +76,10 @@ class ST7796Display:
         self.dc_pin = dc_pin
         self.rst_pin = rst_pin
         self.bl_pin = bl_pin
+        self._backlight = max(0.0, min(1.0, float(backlight_brightness)))
+        self._display_inversion = display_inversion
+        self._bl_pwm = None
+        self._bl_pwm_started = False
 
         dev_path = f"/dev/spidev{bus}.{device}"
         if not os.path.exists(dev_path):
@@ -89,8 +95,10 @@ class ST7796Display:
 
         GPIO.setwarnings(False)
         GPIO.setmode(GPIO.BCM)
-        for pin in (self.cs_pin, self.dc_pin, self.rst_pin, self.bl_pin):
+        for pin in (self.cs_pin, self.dc_pin, self.rst_pin):
             GPIO.setup(pin, GPIO.OUT, initial=GPIO.HIGH)
+        GPIO.setup(self.bl_pin, GPIO.OUT)
+        self._bl_pwm = GPIO.PWM(self.bl_pin, 1000)
 
         self.spi = spidev.SpiDev()
         self.spi.open(bus, device)
@@ -98,7 +106,20 @@ class ST7796Display:
         self.spi.mode = 0
         self.spi.no_cs = True
 
+    def set_backlight(self, duty):
+        duty = max(0.0, min(1.0, float(duty)))
+        self._backlight = duty
+        if self._bl_pwm is None:
+            return
+        if not self._bl_pwm_started:
+            self._bl_pwm.start(duty * 100)
+            self._bl_pwm_started = True
+        else:
+            self._bl_pwm.ChangeDutyCycle(duty * 100)
+
     def close(self):
+        if self._bl_pwm is not None and self._bl_pwm_started:
+            self._bl_pwm.stop()
         GPIO.output(self.bl_pin, GPIO.LOW)
         self.spi.close()
         GPIO.cleanup((self.cs_pin, self.dc_pin, self.rst_pin, self.bl_pin))
@@ -137,9 +158,12 @@ class ST7796Display:
         time.sleep(0.12)
         self.write_command(0x3A, [0x55])  # 16-bit RGB565 pixels
         self.write_command(0x36, [madctl_by_rotation[self.rotation]])
-        self.write_command(0x21)  # Display inversion on, common for IPS panels
+        if self._display_inversion:
+            self.write_command(0x21)  # Display inversion on, common for IPS panels
+        else:
+            self.write_command(0x20)
         self.write_command(0x29)  # Display on
-        GPIO.output(self.bl_pin, GPIO.HIGH)
+        self.set_backlight(self._backlight)
         time.sleep(0.05)
 
     def set_window(self, x0, y0, x1, y1):
@@ -175,8 +199,23 @@ def rgb888_bytes_to_rgb565(raw_bytes):
     return data
 
 
-def image_to_rgb565(image):
-    return rgb888_bytes_to_rgb565(image.convert("RGB").tobytes())
+def image_to_rgb565(image, pixel_brightness=LCD_PIXEL_BRIGHTNESS):
+    img = image.convert("RGB")
+    if pixel_brightness != 1.0:
+        try:
+            from PIL import ImageEnhance
+
+            img = ImageEnhance.Brightness(img).enhance(pixel_brightness)
+        except ImportError:
+            raw = img.tobytes()
+            boosted = bytearray(len(raw))
+            for index in range(0, len(raw), 3):
+                for channel in range(3):
+                    boosted[index + channel] = min(
+                        255, int(raw[index + channel] * pixel_brightness)
+                    )
+            return rgb888_bytes_to_rgb565(boosted)
+    return rgb888_bytes_to_rgb565(img.tobytes())
 
 
 def make_test_card(width, height):
@@ -198,7 +237,6 @@ def make_test_card(width, height):
             band = min(len(colors) - 1, x * len(colors) // width)
             red, green, blue = colors[band]
 
-            # Add a visible border, center cross, and diagonal gradient cue.
             if x < 6 or y < 6 or x >= width - 6 or y >= height - 6:
                 red, green, blue = 255, 255, 255
             elif abs(x - width // 2) < 2 or abs(y - height // 2) < 2:
@@ -216,7 +254,7 @@ def make_test_card(width, height):
     return data
 
 
-def load_image(path, width, height):
+def load_image(path, width, height, pixel_brightness=LCD_PIXEL_BRIGHTNESS):
     try:
         from PIL import Image
     except ImportError as exc:
@@ -230,11 +268,11 @@ def load_image(path, width, height):
     top = (height - image.height) // 2
     canvas.paste(image, (left, top))
 
-    return image_to_rgb565(canvas)
+    return image_to_rgb565(canvas, pixel_brightness=pixel_brightness)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ST7796 SPI LCD smoke test")
+    parser = argparse.ArgumentParser(description="ST7796 SPI LCD wiring smoke test")
     parser.add_argument("--image", help="Optional image file to display")
     parser.add_argument("--speed", type=int, default=16_000_000, help="SPI speed in Hz")
     parser.add_argument("--bus", type=int, default=SPI_BUS, help="SPI bus number")
@@ -249,6 +287,23 @@ def main():
         choices=(0, 90, 180, 270),
         help="Display rotation in degrees",
     )
+    parser.add_argument(
+        "--backlight",
+        type=float,
+        default=LCD_BACKLIGHT_BRIGHTNESS,
+        help="Backlight PWM duty from 0.0 to 1.0 (default: full brightness)",
+    )
+    parser.add_argument(
+        "--pixel-brightness",
+        type=float,
+        default=LCD_PIXEL_BRIGHTNESS,
+        help="Software brightness boost for displayed pixels (1.0 = unchanged)",
+    )
+    parser.add_argument(
+        "--no-inversion",
+        action="store_true",
+        help="Disable display inversion (try if the panel looks washed out)",
+    )
     args = parser.parse_args()
 
     lcd = ST7796Display(
@@ -257,11 +312,18 @@ def main():
         device=args.device,
         cs_pin=args.cs_pin,
         speed_hz=args.speed,
+        backlight_brightness=args.backlight,
+        display_inversion=not args.no_inversion,
     )
     try:
         lcd.initialize()
         pixels = (
-            load_image(args.image, lcd.width, lcd.height)
+            load_image(
+                args.image,
+                lcd.width,
+                lcd.height,
+                pixel_brightness=args.pixel_brightness,
+            )
             if args.image
             else make_test_card(lcd.width, lcd.height)
         )

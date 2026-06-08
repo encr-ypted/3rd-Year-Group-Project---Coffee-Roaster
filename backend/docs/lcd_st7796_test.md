@@ -1,5 +1,7 @@
 # ST7796 SPI LCD Test
 
+**Full roaster pinout (heater, fan, thermocouple, LCD):** `gpio_pinout.md`.
+
 This note is for the LCDWiki 3.5 inch IPS SPI Module using the ST7796 driver:
 https://www.lcdwiki.com/zh/3.5inch_IPS_SPI_Module_ST7796
 
@@ -8,24 +10,24 @@ The project already uses Raspberry Pi SPI0 for the MAX31855 thermocouple:
 - SPI0 SCLK: BCM GPIO 11, physical pin 23
 - SPI0 MISO: BCM GPIO 9, physical pin 21
 - SPI0 MOSI: BCM GPIO 10, physical pin 19
-- Thermocouple CS: BCM GPIO 8, physical pin 24, SPI0 CE0
+- Thermocouple CS: BCM GPIO 7, physical pin 26, SPI0 CE1
 
 Use SPI1 for the LCD smoke test so high-volume image transfers do not share the
 thermocouple SPI0 bus. SPI1 normally puts CE0 on BCM GPIO 18, but this project
-already uses GPIO 18 for the heater SSR. Remap SPI1 CS to BCM GPIO 17 before
+already uses GPIO 23 for the heater SSR. Remap SPI1 CS to BCM GPIO 17 before
 running the test.
 
 ## Pins Already Used By The Roaster
 
 | Function | BCM GPIO | Physical pin |
 | --- | ---: | ---: |
-| Heater SSR | GPIO 18 | 12 |
+| Heater SSR | GPIO 23 | 16 |
 | Fan PWM | GPIO 12 | 32 |
-| MAX31855 CS | GPIO 8 / CE0 | 24 |
+| MAX31855 CS | GPIO 7 / CE1 | 26 |
 | SPI0 MOSI | GPIO 10 | 19 |
 | SPI0 MISO | GPIO 9 | 21 |
 | SPI0 SCLK | GPIO 11 | 23 |
-| SPI1 default CE0, do not use | GPIO 18 | 12 |
+| SPI1 default CE0, do not use | GPIO 18 | 12 | (heater is on GPIO 23) |
 
 ## LCD Wiring
 
@@ -46,7 +48,7 @@ clockwise from the original portrait wiring.
 | DC / RS | Data/command | GPIO 25 | 22 | Free GPIO |
 | SDI / MOSI | SPI1 MOSI | GPIO 20 | 38 | Dedicated LCD SPI bus |
 | SCK / SCLK | SPI1 SCLK | GPIO 21 | 40 | Dedicated LCD SPI bus |
-| LED / BL | Backlight enable | GPIO 23 | 16 | Driven high for test |
+| LED / BL | Backlight enable | GPIO 22 | 15 | Driven high for test |
 | SDO / MISO | SPI1 MISO | GPIO 19 | 35 | Optional for LCD-only test |
 | T_CLK, T_CS, T_DIN, T_DO, T_IRQ | Not connected | - | - | Touch ignored |
 | SD_CS, SD_MOSI, SD_MISO, SD_SCK | Not connected | - | - | SD slot ignored |
@@ -68,7 +70,7 @@ dtoverlay=spi1-1cs,cs0_pin=17
 ```
 
 Do not use plain `dtoverlay=spi1-1cs` for this project, because its default CE0
-pin is GPIO 18, which is already the heater SSR control pin. Reboot after
+pin is GPIO 18 (conflicts if reused). Heater SSR is on GPIO 23. Reboot after
 changing the config:
 
 ```bash
@@ -108,7 +110,7 @@ python -m pip install -r requirements.txt
 Run the LCD smoke test from the repository root:
 
 ```bash
-python backend/hardware/lcd_st7796_test.py
+python backend/hardware/display/st7796.py
 ```
 
 You should see a full-screen 480 x 320 landscape color test card with a border
@@ -119,16 +121,16 @@ while the MAX31855 thermocouple stays on SPI0.
 Optional image test:
 
 ```bash
-python backend/hardware/lcd_st7796_test.py --image path/to/test.jpg
+python backend/hardware/display/st7796.py --image path/to/test.jpg
 ```
 
 If you need to compare orientations:
 
 ```bash
-python backend/hardware/lcd_st7796_test.py --rotation 0
-python backend/hardware/lcd_st7796_test.py --rotation 90
-python backend/hardware/lcd_st7796_test.py --rotation 180
-python backend/hardware/lcd_st7796_test.py --rotation 270
+python backend/hardware/display/st7796.py --rotation 0
+python backend/hardware/display/st7796.py --rotation 90
+python backend/hardware/display/st7796.py --rotation 180
+python backend/hardware/display/st7796.py --rotation 270
 ```
 
 ## Runtime LCD Dashboard
@@ -136,31 +138,23 @@ python backend/hardware/lcd_st7796_test.py --rotation 270
 After the smoke test works, the LCD can run as a small realtime dashboard. It
 does not read the thermocouple or control GPIO directly. Instead, it connects to
 the existing backend WebSocket and displays the same kind of telemetry used by
-the web frontend: temperature, target temperature, rate of rise, heater output,
-fan speed, roast state, and a small temperature trend chart.
+the web frontend: temperature, target/setpoint, heater %, roast state, and a
+planned-vs-live temperature chart.
 
-For the normal roast backend, start the API first:
+**Coupled (recommended on the Pi)** — LCD starts and stops with the API:
+
+```bash
+python backend/api/main.py --lcd
+# bench: python backend/api/hardware_test.py --lcd
+# or set ROASTER_LCD=1 in the environment
+```
+
+**Standalone** — separate process (must start the API first):
 
 ```bash
 python backend/api/main.py
-```
-
-Then start the LCD dashboard from another terminal:
-
-```bash
-python backend/hardware/lcd_dashboard.py
-```
-
-For the hardware bench server, start:
-
-```bash
-python backend/api/hardware_test.py
-```
-
-Then run:
-
-```bash
-python backend/hardware/lcd_dashboard.py --mode bench
+python backend/hardware/display/lcd.py
+# bench: python backend/hardware/display/lcd.py --mode bench
 ```
 
 The default dashboard WebSocket URLs are:
@@ -173,13 +167,13 @@ The default dashboard WebSocket URLs are:
 Override the URL if the backend is on another host:
 
 ```bash
-python backend/hardware/lcd_dashboard.py --ws-url ws://10.64.26.141:8000/ws/telemetry
+python backend/hardware/display/lcd.py --ws-url ws://10.64.26.141:8000/ws/telemetry
 ```
 
 If the dashboard is upside down or rotated the wrong way, change the rotation:
 
 ```bash
-python backend/hardware/lcd_dashboard.py --rotation 270
+python backend/hardware/display/lcd.py --rotation 270
 ```
 
 If the screen stays white or black:
@@ -189,7 +183,7 @@ If the screen stays white or black:
 - Check that `dtoverlay=spi1-1cs,cs0_pin=17` is in the active boot config.
 - If Python raises `FileNotFoundError` or says it cannot find `/dev/spidev1.0`,
   fix the SPI1 overlay first; it is not an LCD wiring problem yet.
-- Try a slower SPI clock: `python backend/hardware/lcd_st7796_test.py --speed 8000000`.
-- For the dashboard, try: `python backend/hardware/lcd_dashboard.py --speed 8000000`.
+- Try a slower SPI clock: `python backend/hardware/display/st7796.py --speed 8000000`.
+- For the dashboard, try: `python backend/hardware/display/lcd.py --speed 8000000`.
 - If colors look swapped, the LCD works; the `MADCTL` color-order byte in the
   script may need changing for that exact panel revision.

@@ -6,16 +6,15 @@ Enable on the Pi:  python api/main.py
 
 import asyncio
 import time
-import math
 from collections import deque
 
-from hardware.heater import RoasterHeater
-from hardware.motor import RoasterMotor
-from hardware.heater_control import create_heater_controller
+from hardware.control.heater_control import create_heater_controller
+from hardware.control.roast_ramp import effective_setpoint
+from hardware.devices.heater import RoasterHeater
+from hardware.devices.motor import RoasterMotor
+from hardware.devices.thermocouple import RoasterThermocouple, read_thermocouple
 from hardware.roast_logger import RoastDataLogger
-from hardware.thermocouple import RoasterThermocouple, read_thermocouple
 import config as cfg
-
 
 
 class RoasterController:
@@ -30,6 +29,11 @@ class RoasterController:
         self.fan_pwm = 0
         self.start_time = 0.0
         self.profile_id = ""
+        self._roast_start_temp = 20.0
+        self._ramp_midpoint_min = cfg.DEFAULT_RAMP_MIDPOINT_MIN
+        self._ramp_steepness = cfg.DEFAULT_RAMP_STEEPNESS
+        self.effective_target = 0.0
+        self._sensor_fault = None
         self._session_outcome = "completed"
         self._test_spin_active = False
 
@@ -37,9 +41,40 @@ class RoasterController:
         self._ror_samples = deque(maxlen=cfg.ROR_WINDOW_SAMPLES)
         self._logger = RoastDataLogger(hardware_mode=cfg.HARDWARE_MODE)
 
-        self._tc = RoasterThermocouple()
+        self._thermocouple = RoasterThermocouple()
         self._heater = RoasterHeater()
+        self._heater.halt()
         self._fan = RoasterMotor()
+
+    def _read_thermocouple(self):
+        temp, fault = read_thermocouple(self._thermocouple)
+        if temp is not None:
+            self.current_temp = temp
+        self._sensor_fault = fault
+        return temp, fault
+
+    def _telemetry_payload(self, **extra):
+        payload = {
+            "type": "telemetry",
+            "timestamp": round(self._elapsed_s(), 1),
+            "temp": round(self.current_temp, 1) if self._sensor_fault is None else None,
+            "target": self.target_temp,
+            "setpoint": round(self.effective_target, 1),
+            "start_temp": round(self._roast_start_temp, 1),
+            "ramp_midpoint_min": self._ramp_midpoint_min,
+            "ramp_steepness": self._ramp_steepness,
+            "heater_pwm": round(self.heater_output),
+            "fan_pwm": self.fan_pwm,
+            "state": self.state,
+            "heater_halted": self._heater.halted,
+            "sensor_fault": self._sensor_fault,
+            "can_resume": self.state == "COOLING" and self._logger.is_active,
+            "test_spin": self._test_spin_active,
+        }
+        if self._logger.is_active:
+            payload["roast_id"] = self._logger.roast_id
+        payload.update(extra)
+        return payload
 
     async def start(self):
         self.is_running = True
@@ -53,27 +88,27 @@ class RoasterController:
         if self._logger.is_active:
             self._logger.end_session("shutdown", self.current_temp)
 
-    def _push_status_now(self):
-        elapsed = (
-            round(time.time() - self.start_time, 1) if self.start_time else 0.0
+    def _elapsed_s(self):
+        if not self.start_time:
+            return 0.0
+        return max(0.0, time.time() - self.start_time)
+
+    def _update_effective_target(self):
+        if self.state not in ("PREHEAT", "ROASTING"):
+            self.effective_target = self.target_temp
+            return self.effective_target
+        self.effective_target = effective_setpoint(
+            self._roast_start_temp,
+            self.target_temp,
+            self._elapsed_s(),
+            self._ramp_midpoint_min,
+            self._ramp_steepness,
         )
-        ror = self._ror() if self.state not in ("IDLE",) else 0.0
-        payload = {
-            "type": "telemetry",
-            "timestamp": elapsed,
-            "temp": round(self.current_temp, 1),
-            "target": self.target_temp,
-            "ror": round(ror, 1),
-            "heater_pwm": round(self.heater_output),
-            "fan_pwm": self.fan_pwm,
-            "state": self.state,
-            "heater_halted": self._heater.halted,
-            "sensor_fault": None,
-            "can_resume": self.state == "COOLING" and self._logger.is_active,
-            "test_spin": self._test_spin_active,
-        }
-        if self._logger.is_active:
-            payload["roast_id"] = self._logger.roast_id
+        return self.effective_target
+
+    def _push_status_now(self):
+        self._update_effective_target()
+        payload = self._telemetry_payload()
         try:
             self.telemetry_queue.put_nowait(payload)
         except Exception:
@@ -102,10 +137,16 @@ class RoasterController:
         if self._logger.is_active:
             self._logger.end_session("replaced", self.current_temp)
 
+        self._read_thermocouple()
         self._test_spin_active = False
         self.profile_id = profile_id
         self._session_outcome = "completed"
         self.target_temp = cfg.target_for_profile(profile_id)
+        ramp = cfg.ramp_sigmoid_for_profile(profile_id)
+        self._ramp_midpoint_min = ramp["midpoint_min"]
+        self._ramp_steepness = ramp["steepness"]
+        self._roast_start_temp = self.current_temp
+        self.effective_target = self._roast_start_temp
         self.state = "PREHEAT"
         self.start_time = time.time()
         self.heater_controller.reset()
@@ -178,7 +219,7 @@ class RoasterController:
         self._logger.log_sample(
             elapsed_s=elapsed,
             temp_c=self.current_temp,
-            target_c=self.target_temp,
+            target_c=self.effective_target,
             heater_pwm=self.heater_output,
             fan_pwm=int(self.fan_pwm),
             ror_c_per_min=ror,
@@ -188,81 +229,56 @@ class RoasterController:
 
     async def _telemetry_loop(self):
         while self.is_running:
-            temp, fault = read_thermocouple(self._tc)
+            self._read_thermocouple()
+            self._update_effective_target()
 
-            if temp is None:
-                elapsed = (
-                    round(time.time() - self.start_time, 1) if self.start_time else 0.0
-                )
-                await self.telemetry_queue.put(
-                    {
-                        "type": "telemetry",
-                        "timestamp": elapsed,
-                        "temp": None,
-                        "target": self.target_temp,
-                        "ror": 0.0,
-                        "heater_pwm": round(self.heater_output),
-                        "fan_pwm": self.fan_pwm,
-                        "state": self.state,
-                        "heater_halted": self._heater.halted,
-                        "sensor_fault": fault,
-                        "can_resume": (
-                            self.state == "COOLING" and self._logger.is_active
-                        ),
-                        "test_spin": self._test_spin_active,
-                    }
-                )
-                await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
-                continue
+            if self._sensor_fault is None:
+                self._ror_samples.append((time.time(), self.current_temp))
 
-            self.current_temp = temp
-            self._ror_samples.append((time.time(), temp))
-
-            if temp > cfg.MAX_SAFE_TEMP_C and self.state not in ("IDLE", "ERROR"):
+            if (
+                self._sensor_fault is None
+                and self.current_temp > cfg.MAX_SAFE_TEMP_C
+                and self.state not in ("IDLE", "ERROR")
+            ):
                 self._heater.stop()
                 prev_state = self.state
                 self.state = "ERROR"
                 if self._logger.is_active:
                     self._log_sample(
-                        round(time.time() - self.start_time, 1) if self.start_time else 0,
+                        round(self._elapsed_s(), 1),
                         self._ror(),
                         event=f"overtemp:{prev_state}->ERROR",
                     )
-                    self._logger.end_session("error", temp)
+                    self._logger.end_session("error", self.current_temp)
                 await self.telemetry_queue.put(
                     {
                         "type": "error",
                         "msg": (
                             f"Over-temp shutdown "
-                            f"({temp:.1f}°C > {cfg.MAX_SAFE_TEMP_C}°C)"
+                            f"({self.current_temp:.1f}°C > {cfg.MAX_SAFE_TEMP_C}°C)"
                         ),
                     }
                 )
 
             prev_state = self.state
-            if self.state == "PREHEAT" and temp >= cfg.PREHEAT_THRESHOLD_C:
-                self.state = "ROASTING"
-            elif self.state == "COOLING" and temp <= cfg.COOL_DOWN_TEMP_C:
-                self.state = "IDLE"
-                self._test_spin_active = False
-                self._fan.stop()
-                self.fan_pwm = 0
-                self._heater.clear_halt()
-                if self._logger.is_active:
-                    elapsed = (
-                        round(time.time() - self.start_time, 1)
-                        if self.start_time
-                        else 0.0
-                    )
-                    self._log_sample(
-                        elapsed, self._ror(), event="state:COOLING->IDLE"
-                    )
-                    self._logger.end_session(self._session_outcome, temp)
+            if self._sensor_fault is None:
+                if self.state == "PREHEAT" and self.current_temp >= cfg.PREHEAT_THRESHOLD_C:
+                    self.state = "ROASTING"
+                elif self.state == "COOLING" and self.current_temp <= cfg.COOL_DOWN_TEMP_C:
+                    self.state = "IDLE"
+                    self._test_spin_active = False
+                    self._fan.stop()
+                    self.fan_pwm = 0
+                    self._heater.clear_halt()
+                    if self._logger.is_active:
+                        self._log_sample(
+                            round(self._elapsed_s(), 1),
+                            self._ror(),
+                            event="state:COOLING->IDLE",
+                        )
+                        self._logger.end_session(self._session_outcome, self.current_temp)
 
-            ror = self._ror()
-            elapsed = (
-                round(time.time() - self.start_time, 1) if self.start_time else 0.0
-            )
+            ror = self._ror() if self._sensor_fault is None else 0.0
 
             if self._logger.is_active and self.state in (
                 "PREHEAT",
@@ -272,44 +288,30 @@ class RoasterController:
                 event = ""
                 if prev_state != self.state:
                     event = f"state:{prev_state}->{self.state}"
-                self._log_sample(elapsed, ror, event)
+                self._log_sample(round(self._elapsed_s(), 1), ror, event)
 
-            payload = {
-                "type": "telemetry",
-                "timestamp": elapsed,
-                "temp": round(temp, 1),
-                "target": self.target_temp,
-                "ror": round(ror, 1) if self.state != "IDLE" else 0.0,
-                "heater_pwm": round(self.heater_output),
-                "fan_pwm": self.fan_pwm,
-                "state": self.state,
-                "heater_halted": self._heater.halted,
-                "sensor_fault": None,
-            }
-            if self._logger.is_active:
-                payload["roast_id"] = self._logger.roast_id
-            payload["can_resume"] = (
-                self.state == "COOLING" and self._logger.is_active
-            )
-            payload["test_spin"] = self._test_spin_active
-            await self.telemetry_queue.put(payload)
+            await self.telemetry_queue.put(self._telemetry_payload())
             await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
 
     async def _heater_loop(self):
         while self.is_running:
             if self.state in ("PREHEAT", "ROASTING"):
-                elapsed_minutes = (time.time() - self.start_time) / 60.0
-                sigmoid_temp = 80 / (1 + math.exp(-(elapsed_minutes - 2))) + 160
-                effective_target = min(sigmoid_temp, self.target_temp)
-                output = self.heater_controller.calculate(
-                    effective_target, self.current_temp
-                )
+                self._read_thermocouple()
+                setpoint = self._update_effective_target()
 
-                if self.current_temp > self.target_temp + cfg.OVERSHOOT_CUTOFF_C:
-                    output = 0.0
-
-                self.heater_output = await self._heater.apply_output(output)
+                if self._sensor_fault is None:
+                    output = self.heater_controller.calculate(
+                        setpoint, self.current_temp
+                    )
+                    if self.current_temp > self.target_temp + cfg.OVERSHOOT_CUTOFF_C:
+                        output = 0.0
+                    self.heater_output = await self._heater.apply_output(output)
+                else:
+                    self.heater_output = await self._heater.apply_output(
+                        self.heater_output
+                    )
             else:
                 self._heater.off()
                 self.heater_output = 0.0
                 await asyncio.sleep(cfg.TELEMETRY_INTERVAL_S)
+

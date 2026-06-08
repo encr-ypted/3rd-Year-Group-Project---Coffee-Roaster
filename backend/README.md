@@ -1,83 +1,76 @@
 # Smart Coffee Roaster — Backend
 
-Python backend for the Smart Coffee Roaster: **WebSocket API**, **hardware control**, **roast logging**, and **ML-ready data**.
+Python backend: **WebSocket API**, **GPIO hardware control**, **roast logging**, and **ML-ready CSV data**.
 
 ## Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Nuxt dashboard (WebSocket client)                            │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ ws://127.0.0.1:8000/ws/telemetry
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  FastAPI (`api/main.py`)                                    │
-│  • WebSocket commands → RoasterController                   │
-│  • Broadcast telemetry to all clients                       │
-└───────────────────────────┬─────────────────────────────────┘
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  RoasterController (`hardware/controller.py`)               │
-│  • State machine (PREHEAT → ROASTING → COOLING → IDLE)      │
-│  • Two async loops: telemetry + heater                      │
-└───────────────────────────┬─────────────────────────────────┘
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Hardware modules                                           │
-│  • thermocouple.py — temperature (MAX31855 raw)             │
-│  • heater.py — relay, time-proportional power               │
-│  • motor.py — fan (low-side PWM, GPIO 12)                   │
-│  • mpc.py — MPC heater control (default)                    │
-│  • pid.py — legacy PID loop                                 │
-│  • roast_logger.py — CSV + JSON metadata                    │
-└─────────────────────────────────────────────────────────────┘
+Nuxt dashboard  →  ws://<pi>:8000/ws/telemetry
+                      ↓
+              api/main.py (FastAPI)
+                      ↓
+         hardware/controller.py (RoasterController)
+                      ↓
+    thermocouple · heater · motor · MPC/PID · roast_logger
 ```
 
-## Hardware bench test (separate API)
+## Two APIs (do not run both on the Pi at once)
 
-For first power-on / wiring checks, use the **bench server** — not the roast API.
-
-| | Roast dashboard | Hardware bench |
-|--|-----------------|----------------|
+| | Roast | Hardware bench |
+|--|-------|----------------|
 | **Run** | `python api/main.py` | `python api/hardware_test.py` |
 | **Port** | 8000 | 8001 |
 | **WebSocket** | `/ws/telemetry` | `/ws/bench` |
-| **Code** | `hardware/controller.py` | `verified_hardware/full_control.py` |
+| **Code** | `hardware/controller.py` | `hardware/hardware_test_bench.py` |
 
-Do **not** run both servers on the Pi at once (GPIO conflict).
+Bench UI: frontend `/hardware-test` — fan, heater, PID/MPC tuning, E-stop.
 
-1. `python api/hardware_test.py`
-2. Open frontend `/hardware-test`
-3. WebSocket `/ws/bench` — `FAN_SET`, `HEAT_START`, `PID_SET`, `E_STOP` (see `api/hardware_test.py`).
+## Quick start (Raspberry Pi)
 
-## Quick start
+Venv lives at **`CoffeeController/.venv`** (project root, sibling of `backend/`).
+
+```bash
+cd ~/Desktop/CoffeeController
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements.txt
+cd backend
+../.venv/bin/python3 api/main.py   # roast API + LCD on the Pi (default)
+```
+
+Dashboard: `ws://127.0.0.1:8000/ws/telemetry`
+
+LCD is **on by default** when `HARDWARE_MODE=pi` in `config.py`. Disable with `ROASTER_LCD=0` or force on with `--lcd`.
+
+### Boot on startup (Raspberry Pi)
+
+Full guide (install, update, uninstall): **`deploy/README.md`**.
 
 ```bash
 cd backend
-pip install -r requirements.txt
-python api/main.py
+chmod +x deploy/install-service.sh
+sudo ./deploy/install-service.sh
 ```
 
-Dashboard WebSocket: `ws://127.0.0.1:8000/ws/telemetry`
+Remove boot deployment: `sudo ./deploy/uninstall-service.sh` (see `deploy/README.md`).
 
-> **Note:** `main.py` instantiates `RoasterController` (real GPIO). Run on a **Raspberry Pi** with thermocouple, heater relay, and fan wired.
+Standalone LCD only: `python hardware/display/lcd.py`.
 
-## WebSocket workflow
+**Local UI without GPIO:** `python api/mock_ui_server.py` (stdlib only, port 8000).
 
-### Client → server (commands)
+## WebSocket — roast API
 
-| Action | JSON | Effect |
-|--------|------|--------|
-| Start roast | `{"action":"START_ROAST","profile_id":"medium"}` | `PREHEAT`, logging, fan on |
-| Stop & cool | `{"action":"STOP_ROAST"}` | `COOLING`, heater off, fan on, log still open |
-| Resume | `{"action":"RESUME_ROAST"}` | Back to preheat/roast, same log file |
-| Finish now | `{"action":"FINISH_ROAST"}` | Save log immediately, keep cooling to 34°C |
-| Emergency | `{"action":"E_STOP"}` | `IDLE`, heater off, fan 100% |
-| State sync | `{"action":"GET_STATE"}` | Reply with current `state` |
+### Commands (client → server)
 
-### Server → client (telemetry)
+| Action | JSON |
+|--------|------|
+| Start roast | `{"action":"START_ROAST","profile_id":"medium"}` |
+| Stop & cool | `{"action":"STOP_ROAST"}` |
+| Resume | `{"action":"RESUME_ROAST"}` |
+| Finish now | `{"action":"FINISH_ROAST"}` |
+| Emergency | `{"action":"E_STOP"}` |
+| State sync | `{"action":"GET_STATE"}` |
 
-Every ~0.5 s while roasting:
+### Telemetry (server → client, ~2 Hz)
 
 ```json
 {
@@ -85,20 +78,22 @@ Every ~0.5 s while roasting:
   "timestamp": 42.5,
   "temp": 187.3,
   "target": 210.0,
-  "ror": 8.2,
+  "setpoint": 185.2,
+  "ramp_midpoint_min": 2.0,
+  "ramp_steepness": 1.0,
   "heater_pwm": 65,
   "fan_pwm": 100,
-  "state": "ROASTING"
+  "state": "ROASTING",
+  "heater_halted": false,
+  "sensor_fault": null,
+  "can_resume": false,
+  "test_spin": false
 }
 ```
 
-On fault:
+RoR is still written to roast CSV logs for ML; it is not sent on the WebSocket (dashboard does not display it).
 
-```json
-{ "type": "error", "msg": "Thermocouple fault: … — roast continues; check probe wiring" }
-```
-
-## RoasterController — state machine
+## State machine
 
 | State | Meaning |
 |-------|---------|
@@ -108,149 +103,102 @@ On fault:
 | `COOLING` | User stopped; fan on until cool |
 | `ERROR` | Over-temp (>250 °C) |
 
-**Transitions**
-
 - `START_ROAST` → `PREHEAT`
 - Temp ≥ **150 °C** → `ROASTING`
 - `STOP_ROAST` → `COOLING`
-- Temp ≤ **34 °C** in `COOLING` → `IDLE` (fan off)
+- Temp ≤ **33 °C** in `COOLING` → `IDLE`
 - Temp > **250 °C** → `ERROR`
 
-**Profile targets (°C)**
+## Control
 
-| Profile | Target |
-|--------|--------|
-| light | 196 |
-| medium | 210 |
-| medium-dark | 220 |
-| dark | 230 |
-| default | 200 |
-
-## Control loops
-
-### 1. Telemetry loop (~2 Hz)
-
-- Read thermocouple (raw)
-- Update `current_temp`, RoR, state
-- Push WebSocket JSON
-- Log samples to CSV (when session active)
-
-### 2. Heater loop (time-proportional)
-
-- While `PREHEAT` or `ROASTING`:
-  - `output = MPCController.calculate(target_temp, current_temp)` (or PID if `HEATER_CONTROLLER = "pid"`)
-  - If temp > target + **15 °C** → `output = 0`
-  - `await RoasterHeater.apply_output(output)` — relay on/off for **2 s** window
-- Else: `heater.stop()`
-
-**Why time-proportional?** Heater is a relay (on/off only). `40%` ≈ relay on 40% of each 2 s window.
-
-### Fan
-
-- `START_ROAST` / `STOP_ROAST` → `RoasterMotor.set_speed(1.0)`
-- Cool-down finished or `E_STOP` → `RoasterMotor.stop()`
+- **Heater:** time-proportional relay (`HEATER_CONTROL_WINDOW_S = 1.0` s). Duty from `MPCController` or `PIDController` — set `HEATER_CONTROLLER` in `config.py`.
+- **Setpoint ramp:** sigmoid from bean start temp to profile target (`hardware/control/roast_ramp.py`).
+- **Overshoot:** heater forced to 0% when temp > target + **15 °C**.
+- **Fan:** on during preheat/roast/cool; off at idle after cool-down.
 
 ## Hardware modules
 
-| File | Class | Role |
-|------|-------|------|
-| `thermocouple.py` | `RoasterThermocouple` | MAX31855, EMA smoothing |
-| `heater.py` | `RoasterHeater` | SSR relay, `apply_output(percent)` |
-| `motor.py` | `RoasterMotor` | Low-side PWM fan (MOSFET/BJT on GPIO 12) |
-| `mpc.py` | `MPCController` | Model-predictive duty 0–100% |
-| `pid.py` | `PIDController` | Legacy P/I/D → 0–100% |
-| `roast_logger.py` | `RoastDataLogger` | CSV + `_meta.json` |
+| File | Role |
+|------|------|
+| `devices/thermocouple.py` | MAX31855, single probe, raw reading |
+| `devices/heater.py` | SSR relay, time-proportional `apply_output()` |
+| `devices/motor.py` | Fan PWM (GPIO 12) |
+| `control/heater_control.py` | Factory: MPC or PID |
+| `control/mpc.py` / `control/pid.py` | Heater duty 0–100% |
+| `control/roast_ramp.py` | Sigmoid setpoint curve |
+| `roast_logger.py` | CSV + JSON metadata |
+| `hardware_test_bench.py` | Bench-only GPIO test harness |
+| `display/st7796.py` / `display/lcd.py` | SPI driver + live WebSocket dashboard |
 
-## Data logging (ML)
+## Configuration (`config.py`)
 
-On each roast:
+| Setting | Value |
+|---------|-------|
+| `HEATER_GPIO` | 23 |
+| `THERMOCOUPLE_CS_GPIO` | 7 (SPI0 CE1) |
+| `FAN_PWM_GPIO` | 12 |
+| `COOL_DOWN_TEMP_C` | 33 |
+| `HEATER_CONTROLLER` | `"mpc"` or `"pid"` |
+| `BENCH_DEFAULT_CONTROLLER` | bench startup mode |
 
-- `logs/roast_<id>.csv` — time series (~2 Hz)
+Profiles: `GET /api/profiles` — same data as `ROAST_PROFILES` in config.
+
+## Data logging
+
+- `logs/roast_<id>.csv` — time series
 - `logs/roast_<id>_meta.json` — session metadata
-- `logs/roasts_index.csv` — one row per roast
+- `logs/roasts_index.csv` — index
 
-**CSV columns:** `roast_id`, `unix_ts`, `elapsed_s`, `profile_id`, `temp_c`, `temp_raw_c`, `target_c`, `temp_error_c`, `heater_pwm`, `fan_pwm`, `ror_c_per_min`, `state`, `event`
+CSV includes `ror_c_per_min` for ML. Examples: `examples/roast_data_formats.json`.
 
-**HTTP:** `GET /api/roasts` — list sessions from `roasts_index.csv`; `GET /api/roasts/{roast_id}` — session metadata JSON.
-
-Logs are written to `backend/logs/` (or `ROASTER_LOG_FOLDER` if set).
-
-**JSON examples:** `examples/roast_data_formats.json`
-
-## Configuration
-
-Hardware and logging settings: **`config.py`** (GPIO, MPC/PID, safety limits, roast profiles). MPC params match **`sami_backend/coffeeControlCodeMPC.py`**. Set `HEATER_CONTROLLER = "pid"` to revert. The dashboard loads profiles from **`GET /api/profiles`** (same data as `ROAST_PROFILES`).
-
-LCD smoke test and realtime dashboard: **`docs/lcd_st7796_test.md`**,
-**`hardware/lcd_st7796_test.py`**, and **`hardware/lcd_dashboard.py`**.
-
-API host/port: **`api/main.py`** (unchanged).
-
-Optional env vars: `ROASTER_LOG_FOLDER`, `ROASTER_HARDWARE_MODE`.
+HTTP: `GET /api/roasts`, `GET /api/roasts/{roast_id}`.
 
 ## Project layout
 
 ```
 backend/
-├── config.py                # Hardware / logging configuration
-├── api/main.py              # Roast API (port 8000)
-├── api/hardware_test.py     # Bench API (port 8001)
+├── config.py
+├── api/
+│   ├── main.py              # Roast API (8000)
+│   ├── hardware_test.py     # Bench API (8001)
+│   └── mock_ui_server.py    # Dev mock (no GPIO)
 ├── hardware/
-│   ├── controller.py        # RoasterController (roast orchestration)
-│   ├── thermocouple.py
-│   ├── heater.py
-│   ├── motor.py
-│   ├── pid.py
-│   └── roast_logger.py
-├── verified_hardware/
-│   ├── full_control.py      # HardwareTestBench (bench only)
-│   ├── thermocouple.py
-│   ├── heater.py
-│   ├── motor.py
-│   └── pid.py
+│   ├── controller.py           # Roast orchestration
+│   ├── hardware_test_bench.py  # Bench GPIO harness
+│   ├── roast_logger.py
+│   ├── devices/                # thermocouple, heater, motor
+│   ├── control/                # pid, mpc, heater_control, roast_ramp
+│   └── display/                # st7796.py (driver), lcd.py (dashboard)
+├── deploy/                     # systemd install + uninstall scripts
+├── docs/lcd_st7796_test.md
 ├── examples/roast_data_formats.json
-├── requirements.txt
-└── README.md
+└── requirements.txt
 ```
 
-## Safety notes
+## GPIO pinout
 
-- **Over-temp:** >250 °C → `ERROR`, heater off
-- **Overshoot:** >target + 15 °C → heater 0% for that window
-- **E-STOP:** immediate relay off (`heater.stop()`)
+Full wiring table (physical pins + BCM GPIO): **`docs/gpio_pinout.md`**.
+
+## LCD
+
+See `docs/lcd_st7796_test.md`. LCD code lives in `hardware/display/`. LCD uses **SPI1** (CS GPIO 17); thermocouple stays on **SPI0**.
 
 ## Troubleshooting
 
-### `OSError: /dev/spidev0.0 does not exist`
-
-The MAX31855 uses **SPI**. The kernel device is missing until SPI is turned on:
+### `/dev/spidev0.0` missing
 
 ```bash
 sudo raspi-config   # Interface Options → SPI → Enable
 sudo reboot
-ls /dev/spidev*     # should list spidev0.0 and spidev0.1
+ls /dev/spidev*
 ```
 
-If SPI is enabled but permission errors appear:
+Thermocouple CS: GPIO **7** (`THERMOCOUPLE_CS_GPIO`). Add user to `spi,gpio` if permission errors.
 
-```bash
-sudo usermod -aG spi,gpio $USER
-# log out and back in (or reboot)
-```
+### WebSocket 403 on `/ws/telemetry`
 
-Wiring (BCM): CS → GPIO **8** (see `THERMOCOUPLE_CS_GPIO` in `config.py`). SCLK/MOSI/MISO use the Pi’s hardware SPI pins (11, 10, 9 on older docs — your `config.py` notes DO on 9).
+Wrong server on port 8000 — run `main.py`, not `hardware_test.py`.
 
-### `RuntimeError: short circuit to ground` (thermocouple)
+### Thermocouple fault
 
-Hardware fault from the MAX31855: probe wires shorted to ground, loose terminals, or damaged cable. Fix wiring before enabling the heater.
-
-## Known limitations
-
-- Heater loop blocks ~2 s per `apply_output` — PID updates once per window, not every 0.5 s.
-- No mock/simulation path in current `main.py` — intended for **Raspberry Pi** hardware.
-- For local UI testing without GPIO, consider re-adding a `MockHardwareManager` or running on Pi only.
-
-## Related docs
-
-- WebSocket JSON examples: `examples/roast_data_formats.json`
-- Git-ignored runtime data: `logs/` (CSV + JSON per roast)
+Fix probe wiring before enabling the heater.

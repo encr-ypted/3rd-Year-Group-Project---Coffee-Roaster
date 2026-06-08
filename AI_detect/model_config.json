@@ -1,0 +1,54 @@
+{
+  "seed": 42,
+  "image_size": [96, 96],
+  "batch_size": 16,
+  "epochs_stage1": 8,
+  "epochs_final": 12,
+  "learning_rate": 0.001,
+  "weight_decay": 0.0001,
+  "num_workers": 0,
+  "normalise_mean": [0.5, 0.5, 0.5],
+  "normalise_std": [0.5, 0.5, 0.5],
+  "models": [
+    {
+      "name": "tiny_cnn",
+      "conv_channels": [16, 32],
+      "dense_units": [64],
+      "dropout": 0.2,
+      "batch_norm": true,
+      "pool_size": 4
+    },
+    {
+      "name": "balanced_cnn",
+      "conv_channels": [16, 32, 64],
+      "dense_units": [128],
+      "dropout": 0.3,
+      "batch_norm": true,
+      "pool_size": 4
+    },
+    {
+      "name": "deeper_cnn",
+      "conv_channels": [16, 32, 64, 96],
+      "dense_units": [160, 64],
+      "dropout": 0.35,
+      "batch_norm": true,
+      "pool_size": 3
+    },
+    {
+      "name": "wide_cnn",
+      "conv_channels": [24, 48, 96],
+      "dense_units": [160],
+      "dropout": 0.25,
+      "batch_norm": true,
+      "pool_size": 4
+    },
+    {
+      "name": "regularised_cnn",
+      "conv_channels": [16, 32, 48],
+      "dense_units": [96],
+      "dropout": 0.45,
+      "batch_norm": true,
+      "pool_size": 4
+    }
+  ]
+}

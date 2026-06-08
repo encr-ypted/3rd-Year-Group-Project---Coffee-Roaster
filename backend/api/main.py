@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import os
@@ -12,11 +13,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import config as cfg
 from hardware.controller import RoasterController
+from hardware.display.lcd import (
+    LcdLifecycle,
+    add_dashboard_args,
+    dashboard_args_from_namespace,
+    lcd_enabled,
+)
 from hardware.roast_logger import list_sessions
 
 
 PORT = 8000
 hw_manager = RoasterController()
+lcd_lifecycle = LcdLifecycle()
 
 active_connections = []
 
@@ -25,7 +33,9 @@ active_connections = []
 async def lifespan(app: FastAPI):
     await hw_manager.start()
     asyncio.create_task(_broadcaster())
+    await lcd_lifecycle.start()
     yield
+    await lcd_lifecycle.stop()
     hw_manager.shutdown()
 
 
@@ -140,4 +150,13 @@ async def websocket_endpoint(websocket: WebSocket):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Smart Coffee Roaster API")
+    add_dashboard_args(parser)
+    cli_args, _ = parser.parse_known_args()
+
+    if lcd_enabled(cli_args.lcd):
+        lcd_lifecycle.enabled = True
+        lcd_lifecycle.mode = "roast"
+        lcd_lifecycle.args = dashboard_args_from_namespace(cli_args, mode="roast")
+
     uvicorn.run(app, host="0.0.0.0", port=PORT)

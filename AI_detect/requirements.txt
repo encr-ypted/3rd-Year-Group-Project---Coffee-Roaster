@@ -1,0 +1,7 @@
+# Picamera2 is normally installed on Raspberry Pi OS with apt:
+#   sudo apt install python3-picamera2
+Pillow>=10.0
+numpy>=1.24
+matplotlib>=3.7
+torch>=2.0
+opencv-python>=4.8

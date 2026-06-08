@@ -93,3 +93,6 @@ Desktop.ini
 .ipynb_checkpoints/
 # Large datasets or exported CSVs you don't want in version control
 data_analysis/exports/*.csv
+
+# Product QR landing page generated locally
+product_webpage/

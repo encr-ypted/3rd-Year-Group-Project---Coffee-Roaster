@@ -1,11 +1,5 @@
-/** Matches backend/hardware/control/roast_ramp.py */
 
-function logisticSetpoint(start, target, tMin, mid, k) {
-  const span = target - start
-  return span / (1 + Math.exp(-k * (tMin - mid))) + start
-}
 
-/** Anchored sigmoid: setpoint at t=0 equals bean start temp, still reaches target. */
 export function sigmoidSetpoint(startTemp, targetTemp, elapsedSec, midpointMin, steepness = 1) {
   const start = Number(startTemp)
   const target = Number(targetTemp)
@@ -15,18 +9,15 @@ export function sigmoidSetpoint(startTemp, targetTemp, elapsedSec, midpointMin, 
   if (target <= start) return target
 
   const tMin = Math.max(0, Number(elapsedSec)) / 60
-  const atZero = logisticSetpoint(start, target, 0, mid, k)
-  const raw = logisticSetpoint(start, target, tMin, mid, k)
 
-  if (target <= atZero || Math.abs(target - atZero) < 1e-9) {
-    return Math.min(raw, target)
-  }
+  const rawZero = (target - start) / (1 + Math.exp(-k * (0 - mid))) + start
+  const rawNow = (target - start) / (1 + Math.exp(-k * (tMin - mid))) + start
 
-  const remapped = start + ((raw - atZero) / (target - atZero)) * (target - start)
-  return Math.min(remapped, target)
+  const setpoint = start + ((rawNow - rawZero) / (target - rawZero)) * (target - start)
+
+  return Math.min(setpoint, target)
 }
 
-/** Seconds until the planned curve is within 0.5°C of target. */
 export function estimateRoastDurationSec(startTemp, targetTemp, midpointMin, steepness = 1) {
   for (let sec = 0; sec <= 30 * 60; sec += 15) {
     if (sigmoidSetpoint(startTemp, targetTemp, sec, midpointMin, steepness) >= targetTemp - 0.5) {
@@ -56,7 +47,6 @@ export function buildPlannedTrajectory(plan, stepSec = 20) {
   return points
 }
 
-/** Plan params aligned with the latest telemetry sample during an active roast. */
 export function planFromTelemetry(plan, points) {
   if (!plan) return null
   const last = points?.[points.length - 1]

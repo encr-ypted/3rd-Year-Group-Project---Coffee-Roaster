@@ -1,65 +1,82 @@
 import time
 import csv
 import os
+import math
 from datetime import datetime
 
 import board
 import digitalio
 import adafruit_max31855
-from gpiozero import DigitalOutputDevice, Motor, PWMOutputDevice
+from gpiozero import DigitalOutputDevice, PWMOutputDevice
 
 
 TARGET_C = 180.0
 MAX_SAFE_TEMP_C = 250.0
 LOG_FOLDER = "logs"
 COMMAND_FILE = "roaster_command.txt"
+DEFAULT_COMMAND = "IDLE"
 
-HEATER_GPIO = 18
+HEATER_GPIO = 23
 CONTROL_WINDOW_S = 1.0
 
-IN1 = 23
-IN2 = 24
 ENA = 12
-
 MOTOR_ON_SPEED = 0.0
 MOTOR_OFF_SPEED = 1.0
 
-FAN_RAMP_TIME_S = 5.0
+FAN_START_SPEED = 0.0
+FAN_END_SPEED = 0.1
+FAN_DECREASE_TIME_S = 300
+
+FAN_RAMP_TIME_S = 1
 FAN_RAMP_STEPS = 10
 fan_ramp_done = False
 
 AMBIENT_C = 25.0
-MODEL_A = 0.9555
-MODEL_B = 0.1173
+MODEL_A = 0.9978
+MODEL_B = 0.0058
 
-PREDICTION_HORIZON = 30
+MODEL_B_MIN = 0.0035
+MODEL_B_MAX = 0.0080
+MODEL_B_ADAPT_INTERVAL_S = 20.0
+MODEL_B_ADAPT_STEP = 0.0002
+MODEL_B_ERROR_THRESHOLD_C = 1
+
+PREDICTION_HORIZON = 120
 DUTY_STEP = 1
 
-WEIGHT_TRACKING = 2.0
-WEIGHT_HEATER_CHG_IN = 0.1
+WEIGHT_TRACKING = 15.0
+WEIGHT_HEATER_CHG_IN = 0.01
 WEIGHT_OVERSHOOT = 10.0
 
+RAMP_MIDPOINT_MIN = 2.0
+RAMP_STEEPNESS = 1.0
+
 previous_heater_output = 0.0
+roast_start_temp_c = None
+current_target_c = TARGET_C
+last_setpoint_c = TARGET_C
+last_model_b_adapt_time = 0.0
 
 
 spi = board.SPI()
-cs = digitalio.DigitalInOut(board.D8)
+cs = digitalio.DigitalInOut(board.D7)
 sensor = adafruit_max31855.MAX31855(spi, cs)
 
 heater = DigitalOutputDevice(HEATER_GPIO, active_high=True, initial_value=False)
-
-motor = Motor(forward=IN1, backward=IN2)
 enable = PWMOutputDevice(ENA, frequency=1000)
 
 
 def fan_on():
     enable.value = MOTOR_ON_SPEED
-    motor.forward()
 
 
 def fan_off():
     enable.value = MOTOR_OFF_SPEED
-    motor.forward()
+
+
+def fan_speed_for_roast(elapsed_s):
+    progress = min(1.0, max(0.0, elapsed_s / FAN_DECREASE_TIME_S))
+    return FAN_START_SPEED + ((FAN_END_SPEED - FAN_START_SPEED) * progress)
 
 
 def fan_ramp_start():
@@ -68,7 +85,6 @@ def fan_ramp_start():
     for i in range(FAN_RAMP_STEPS + 1):
         speed = MOTOR_OFF_SPEED - ((MOTOR_OFF_SPEED - MOTOR_ON_SPEED) * (i / FAN_RAMP_STEPS))
         enable.value = speed
-        motor.forward()
         print(f"Fan ramp spd: {speed:.2f}")
         time.sleep(FAN_RAMP_TIME_S / FAN_RAMP_STEPS)
 
@@ -76,27 +92,11 @@ def fan_ramp_start():
     print("Fan ramp complete so heater is now allowed")
 
 
-def read_average_temp(samples=3, delay=0.02):
-    readings = []
-
-    for _ in range(samples):
-        try:
-            value = sensor.temperature
-            if value is not None and value > -10:
-                readings.append(value)
-        except Exception:
-            pass
-
-        time.sleep(delay)
-
-    if len(readings) == 0:
-        raise RuntimeError("No valid temperature readings")
-
-    return sum(readings) / len(readings)
-
 def read_command():
+    global current_target_c
+
     if not os.path.exists(COMMAND_FILE):
-        return "IDLE", TARGET_C
+        return "IDLE", current_target_c
 
     with open(COMMAND_FILE, "r") as file:
         text = file.read().strip()
@@ -104,11 +104,31 @@ def read_command():
     if text.startswith("RUN,"):
         try:
             _, target = text.split(",")
-            return "RUN", float(target)
+            current_target_c = float(target)
+            return "RUN", current_target_c
         except Exception:
-            return "RUN", TARGET_C
+            return "RUN", current_target_c
 
-    return text, TARGET_C
+    return text, current_target_c
+
+
+def setpoint_curve(start_temp_c, target_c, elapsed_s, midpoint_min, steepness):
+    start = float(start_temp_c)
+    target = float(target_c)
+    midpoint_min = float(midpoint_min)
+    steepness = float(steepness)
+
+    if target <= start:
+        return target
+
+    t_min = max(0.0, float(elapsed_s)) / 60.0
+
+    raw_zero = (target - start) / (1.0 + math.exp(-steepness * (0.0 - midpoint_min))) + start
+    raw_now = (target - start) / (1.0 + math.exp(-steepness * (t_min - midpoint_min))) + start
+
+    setpoint = start + ((raw_now - raw_zero) / (target - raw_zero)) * (target - start)
+
+    return min(setpoint, target)
 
 
 def calculate_mpc(temp_c, target_c):
@@ -131,7 +151,7 @@ def calculate_mpc(temp_c, target_c):
             error = target_c - predicted_temp
             cost += WEIGHT_TRACKING * (error ** 2)
 
-            if predicted_temp > target_c + 3:
+            if predicted_temp > target_c + 10:
                 cost += WEIGHT_OVERSHOOT * ((predicted_temp - target_c) ** 2)
 
             if predicted_temp > MAX_SAFE_TEMP_C:
@@ -147,6 +167,24 @@ def calculate_mpc(temp_c, target_c):
     return float(best_duty)
 
 
+def adapt_model_b(temp_c, setpoint_c, elapsed_s):
+    global MODEL_B
+    global last_model_b_adapt_time
+
+    if elapsed_s - last_model_b_adapt_time < MODEL_B_ADAPT_INTERVAL_S:
+        return
+
+    error = setpoint_c - temp_c
+
+    if error > MODEL_B_ERROR_THRESHOLD_C:
+        MODEL_B = max(MODEL_B_MIN, MODEL_B - MODEL_B_ADAPT_STEP)
+        last_model_b_adapt_time = elapsed_s
+
+    elif error < -MODEL_B_ERROR_THRESHOLD_C:
+        MODEL_B = min(MODEL_B_MAX, MODEL_B + MODEL_B_ADAPT_STEP)
+        last_model_b_adapt_time = elapsed_s
+
+
 os.makedirs(LOG_FOLDER, exist_ok=True)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 log_file = f"{LOG_FOLDER}/roast_{timestamp}.csv"
@@ -157,18 +195,27 @@ with open(log_file, "w", newline="") as file:
         "time_s",
         "temp_c",
         "target_c",
+        "setpoint_c",
+        "start_temp_c",
+        "ramp_midpoint_min",
+        "ramp_steepness",
+        "model_b",
         "heater_output_percent",
         "fan_speed",
         "state"
     ])
 
 
-
 print(f"Default target temperature: {TARGET_C} °C")
 print(f"Logging to: {log_file}")
 
 
+with open(COMMAND_FILE, "w") as file:
+    file.write(DEFAULT_COMMAND)
+
+
 start_time = time.time()
+last_command = "IDLE"
 
 try:
     fan_off()
@@ -179,14 +226,27 @@ try:
         elapsed = round(time.time() - start_time, 1)
         command, target_c = read_command()
 
-        if command == "E_STOP":
-            heater.off()
-            fan_off()
-            print("EMERGENCY STOP from dashboard")
-            break
-
         try:
-            temp_c = read_average_temp(samples=8, delay=0.05)
+            temp_c = sensor.temperature
+
+            if temp_c is None:
+                raise RuntimeError("No temperature reading")
+
+            if command == "RUN" and last_command != "RUN":
+                start_time = time.time()
+                elapsed = 0.0
+                roast_start_temp_c = temp_c
+                last_model_b_adapt_time = 0.0
+
+            last_command = command
+
+            if command == "E_STOP":
+                heater.off()
+                fan_on()
+                print("EMERGENCY STOP from dashboard")
+                break
+
+            setpoint_c = last_setpoint_c
 
             if command == "IDLE":
                 heater_output = 0.0
@@ -194,17 +254,42 @@ try:
 
             elif command == "STOP":
                 heater_output = 0.0
-                state = "COOLING_FROM_DASHBOARD"
+
+                if temp_c < 37.0:
+                    fan_off()
+                    time.sleep(5)
+                    state = "IDLE"
+                else:
+                    fan_on()
+                    state = "COOLING_FROM_DASHBOARD"
 
             else:
-                heater_output = calculate_mpc(temp_c, target_c)
+                if roast_start_temp_c is None:
+                    roast_start_temp_c = temp_c
+
+                fan_speed = fan_speed_for_roast(elapsed)
+                enable.value = fan_speed
+
+                setpoint_c = setpoint_curve(
+                    roast_start_temp_c,
+                    target_c,
+                    elapsed,
+                    RAMP_MIDPOINT_MIN,
+                    RAMP_STEEPNESS
+                )
+
+                last_setpoint_c = setpoint_c
+
+                heater_output = calculate_mpc(temp_c, setpoint_c)
                 heater_output = round(heater_output, 1)
+
+                adapt_model_b(temp_c, setpoint_c, elapsed)
 
                 if temp_c > MAX_SAFE_TEMP_C:
                     heater_output = 0.0
                     state = "SAFETY_SHUTDOWN_OVERTEMP"
 
-                elif temp_c > target_c + 15:
+                elif temp_c > setpoint_c + 15:
                     heater_output = 0.0
                     state = "ABOVE_TARGET_HEATER_OFF"
 
@@ -221,16 +306,25 @@ try:
                     elapsed,
                     round(temp_c, 2),
                     target_c,
+                    round(setpoint_c, 2),
+                    round(roast_start_temp_c, 2) if roast_start_temp_c is not None else "",
+                    RAMP_MIDPOINT_MIN,
+                    RAMP_STEEPNESS,
+                    round(MODEL_B, 6),
                     heater_output,
-                    MOTOR_ON_SPEED,
+                    enable.value,
                     state
                 ])
+
+            actual_fan_percent = (1.0 - enable.value) * 100
 
             print(
                 f"{elapsed}s | Temp: {temp_c:.2f} °C | "
                 f"Target: {target_c:.1f} °C | "
+                f"Setpoint: {setpoint_c:.1f} °C | "
                 f"MPC Heater: {heater_output:.1f}% | "
-                f"Fan: {MOTOR_ON_SPEED:.1f} | {state}"
+                f"Fan: {actual_fan_percent:.1f}% | "
+                f"Model B: {MODEL_B:.6f} | {state}"
             )
 
             on_time = CONTROL_WINDOW_S * (heater_output / 100)
@@ -258,8 +352,13 @@ try:
                     elapsed,
                     "NaN",
                     target_c,
+                    round(last_setpoint_c, 2),
+                    round(roast_start_temp_c, 2) if roast_start_temp_c is not None else "",
+                    RAMP_MIDPOINT_MIN,
+                    RAMP_STEEPNESS,
+                    round(MODEL_B, 6),
                     heater_output,
-                    MOTOR_ON_SPEED,
+                    enable.value,
                     state
                 ])
 
@@ -278,4 +377,4 @@ try:
 except KeyboardInterrupt:
     heater.off()
     fan_off()
-    print("\nStopped safely. Heater OFF. Fan OFF.")
+    print("\nStopped . Heater OFF. Fan OFF.")

@@ -23,13 +23,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def split_counts(n_items: int, train_ratio: float, validate_ratio: float) -> tuple[int, int, int]:
-    if n_items <= 0:
-        return 0, 0, 0
-    if n_items == 1:
-        return 1, 0, 0
-    if n_items == 2:
-        return 1, 0, 1
-
+    if n_items < 3:
+        raise ValueError("At least 3 images are required so train, validate, and test can all receive data.")
     validate_count = max(1, round(n_items * validate_ratio))
     test_count = max(1, n_items - round(n_items * train_ratio) - validate_count)
     train_count = n_items - validate_count - test_count
@@ -106,6 +101,14 @@ def main() -> int:
 
     if not groups:
         print(f"No images found in {input_dir}")
+        return 1
+
+    too_small = [(group_name, len(files)) for group_name, _, files in groups if len(files) < 3]
+    if too_small:
+        print("Dataset split failed: every class/group needs at least 3 images.")
+        for group_name, count in too_small:
+            print(f"  - {group_name}: {count} image(s)")
+        print("Add more images so train, validate, and test can each receive at least one sample.")
         return 1
 
     print("SmartRoast dataset split")

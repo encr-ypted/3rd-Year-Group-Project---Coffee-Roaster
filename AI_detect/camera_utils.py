@@ -80,6 +80,16 @@ class CameraSession:
                 self._selected_backend = "picamera2"
                 return self
             except Exception as exc:
+                if self._picam2 is not None:
+                    try:
+                        self._picam2.stop()
+                    except Exception:
+                        pass
+                    try:
+                        self._picam2.close()
+                    except Exception:
+                        pass
+                    self._picam2 = None
                 errors.append(f"picamera2: {exc}")
                 if self.backend == "picamera2":
                     raise CameraError("; ".join(errors)) from exc

@@ -56,6 +56,13 @@ class ImageFolderDataset(Dataset):
     def class_names(self) -> list[str]:
         return [name for name, _ in sorted(self.class_to_idx.items(), key=lambda item: item[1])]
 
+    def sample_counts_by_class(self) -> dict[str, int]:
+        index_to_class = {index: name for name, index in self.class_to_idx.items()}
+        counts = {class_name: 0 for class_name in self.class_to_idx}
+        for _, class_index in self.samples:
+            counts[index_to_class[class_index]] += 1
+        return counts
+
     def __len__(self) -> int:
         return len(self.samples)
 
@@ -268,6 +275,16 @@ def require_non_empty_dataset(name: str, dataset: Dataset) -> None:
         raise ValueError(f"{name} is empty. Check that it contains class folders with images.")
 
 
+def require_complete_class_coverage(name: str, dataset: ImageFolderDataset) -> None:
+    counts = dataset.sample_counts_by_class()
+    missing = [class_name for class_name, count in counts.items() if count == 0]
+    if missing:
+        raise ValueError(
+            f"{name} is missing sample(s) for class(es): {', '.join(missing)}. "
+            "Each split must contain at least one image from every class."
+        )
+
+
 def main() -> int:
     args = parse_args()
     config = load_config(args.config)
@@ -282,6 +299,12 @@ def main() -> int:
     train_dataset = ImageFolderDataset(args.train_dir, image_size=image_size, mean=mean, std=std)
     if not train_dataset.class_to_idx:
         print("No class folders found. Expected folders like train_set_augmented/bean and train_set_augmented/no_bean.")
+        return 1
+    if len(train_dataset.class_names) < 2:
+        print(
+            "Training needs at least two class folders, for example "
+            "train_set_augmented/bean and train_set_augmented/no_bean."
+        )
         return 1
 
     validate_dataset = ImageFolderDataset(
@@ -303,6 +326,9 @@ def main() -> int:
         require_non_empty_dataset("train_set_augmented", train_dataset)
         require_non_empty_dataset("validate_set", validate_dataset)
         require_non_empty_dataset("test_set", test_dataset)
+        require_complete_class_coverage("train_set_augmented", train_dataset)
+        require_complete_class_coverage("validate_set", validate_dataset)
+        require_complete_class_coverage("test_set", test_dataset)
     except ValueError as exc:
         print(exc)
         return 1

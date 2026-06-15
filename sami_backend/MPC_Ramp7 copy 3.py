@@ -24,37 +24,39 @@ MOTOR_ON_SPEED = 0.0
 MOTOR_OFF_SPEED = 1.0
 
 FAN_START_SPEED = 0.0
-FAN_END_SPEED = 0.15
-FAN_DECREASE_TIME_S = 300
+FAN_END_SPEED = 0.2
+FAN_DECREASE_TIME_S = 550
 
 FAN_RAMP_TIME_S = 0.1
 FAN_RAMP_STEPS = 10
 fan_ramp_done = False
 
-PREHEAT_TARGET_C = 180.0
+PREHEAT_TARGET_C = 190
 PREHEAT_STABLE_BAND_C = 4.0
 PREHEAT_DROP_DETECT_C = 10.0
 BEAN_DROP_RISE_CONFIRM_C = 1.0
 
 AMBIENT_C = 25.0
 MODEL_A = 0.9978
-MODEL_B = 0.0036
+
+PREHEAT_MODEL_B = 0.0041
+ROAST_MODEL_B = 0.008
 
 MODEL_B_MIN = 0.0035
 MODEL_B_MAX = 0.0080
-MODEL_B_ADAPT_INTERVAL_S = 20.0
-MODEL_B_ADAPT_STEP = 0.0001
+MODEL_B_ADAPT_INTERVAL_S = 8.0
+MODEL_B_ADAPT_STEP = 0.00015
 MODEL_B_ERROR_THRESHOLD_C = 1.5
 
-PREDICTION_HORIZON = 120
+PREDICTION_HORIZON = 90
 DUTY_STEP = 1
 
-WEIGHT_TRACKING = 15.0
-WEIGHT_HEATER_CHG_IN = 0.01
-WEIGHT_OVERSHOOT = 10.0
+WEIGHT_TRACKING = 20.0
+WEIGHT_HEATER_CHG_IN = 0.1
+WEIGHT_OVERSHOOT = 15.0
 
-RAMP_MIDPOINT_MIN = 3.5
-RAMP_STEEPNESS =0.75
+RAMP_MIDPOINT_MIN = 4.5
+RAMP_STEEPNESS = 0.75
 
 previous_heater_output = 0.0
 roast_start_temp_c = None
@@ -154,8 +156,11 @@ def setpoint_curve(start_temp_c, target_c, elapsed_s, midpoint_min, steepness):
     return min(setpoint, target)
 
 
-def calculate_mpc(temp_c, target_c):
+def calculate_mpc(temp_c, target_c, elapsed_s=None, roast_start_temp_c=None, model_b=None):
     global previous_heater_output
+
+    if model_b is None:
+        model_b = ROAST_MODEL_B
 
     best_duty = 0.0
     best_cost = float("inf")
@@ -164,18 +169,29 @@ def calculate_mpc(temp_c, target_c):
         predicted_temp = temp_c
         cost = 0.0
 
-        for _ in range(PREDICTION_HORIZON):
+        for step in range(PREDICTION_HORIZON):
             predicted_temp = (
                 AMBIENT_C
                 + MODEL_A * (predicted_temp - AMBIENT_C)
-                + MODEL_B * duty
+                + model_b * duty
             )
 
-            error = target_c - predicted_temp
+            if elapsed_s is not None and roast_start_temp_c is not None:
+                future_setpoint = setpoint_curve(
+                    roast_start_temp_c,
+                    target_c,
+                    elapsed_s + step,
+                    RAMP_MIDPOINT_MIN,
+                    RAMP_STEEPNESS
+                )
+            else:
+                future_setpoint = target_c
+
+            error = future_setpoint - predicted_temp
             cost += WEIGHT_TRACKING * (error ** 2)
 
-            if predicted_temp > target_c + 10:
-                cost += WEIGHT_OVERSHOOT * ((predicted_temp - target_c) ** 2)
+            if predicted_temp > future_setpoint + 5:
+                cost += WEIGHT_OVERSHOOT * ((predicted_temp - future_setpoint) ** 2)
 
             if predicted_temp > MAX_SAFE_TEMP_C:
                 cost += 100000
@@ -191,7 +207,7 @@ def calculate_mpc(temp_c, target_c):
 
 
 def adapt_model_b(temp_c, setpoint_c, elapsed_s):
-    global MODEL_B
+    global ROAST_MODEL_B
     global last_model_b_adapt_time
 
     if elapsed_s - last_model_b_adapt_time < MODEL_B_ADAPT_INTERVAL_S:
@@ -200,11 +216,11 @@ def adapt_model_b(temp_c, setpoint_c, elapsed_s):
     error = setpoint_c - temp_c
 
     if error > MODEL_B_ERROR_THRESHOLD_C:
-        MODEL_B = max(MODEL_B_MIN, MODEL_B - MODEL_B_ADAPT_STEP)
+        ROAST_MODEL_B = max(MODEL_B_MIN, ROAST_MODEL_B - MODEL_B_ADAPT_STEP)
         last_model_b_adapt_time = elapsed_s
 
     elif error < -MODEL_B_ERROR_THRESHOLD_C:
-        MODEL_B = min(MODEL_B_MAX, MODEL_B + MODEL_B_ADAPT_STEP)
+        ROAST_MODEL_B = min(MODEL_B_MAX, ROAST_MODEL_B + MODEL_B_ADAPT_STEP)
         last_model_b_adapt_time = elapsed_s
 
 
@@ -239,15 +255,21 @@ write_command(DEFAULT_COMMAND)
 start_time = time.time()
 last_command = "IDLE"
 
+
+
+
+
+
+
 try:
     fan_off()
     fan_ramp_start()
     fan_ramp_done = True
 
-
     while True:
         elapsed = round(time.time() - start_time, 1)
         command, target_c = read_command()
+        active_model_b = ROAST_MODEL_B
 
         try:
             temp_c = sensor.temperature
@@ -295,27 +317,35 @@ try:
 
             if command == "IDLE":
                 heater_output = 0.0
+                if temp_c < 45.0:
+                    fan_off()
+                else:
+                    fan_on()
                 state = "IDLE"
-
+            elif command == "FAN_TEST":
+                heater_output = 0.0
+                fan_on()
+                state = "IDLE"
             elif command == "PREHEAT":
                 fan_on()
                 setpoint_c = PREHEAT_TARGET_C
+                active_model_b = PREHEAT_MODEL_B
+
+                heater_output = calculate_mpc(
+                    temp_c,
+                    setpoint_c,
+                    model_b=PREHEAT_MODEL_B
+                )
+                heater_output = round(heater_output, 1)
 
                 if bean_drop_started:
-                    setpoint_c = PREHEAT_TARGET_C
-                    heater_output = calculate_mpc(temp_c, setpoint_c)
-                    heater_output = round(heater_output, 1)
                     state = "BEAN_DROP_DETECTED_WAITING_FOR_BOTTOM"
+                elif abs(temp_c - PREHEAT_TARGET_C) <= PREHEAT_STABLE_BAND_C:
+                    preheat_ready = True
+                    preheat_ready_temp_c = temp_c
+                    state = "PREHEAT_READY_ADD_BEANS"
                 else:
-                    heater_output = calculate_mpc(temp_c, setpoint_c)
-                    heater_output = round(heater_output, 1)
-
-                    if abs(temp_c - PREHEAT_TARGET_C) <= PREHEAT_STABLE_BAND_C:
-                        preheat_ready = True
-                        preheat_ready_temp_c = temp_c
-                        state = "PREHEAT_READY_ADD_BEANS"
-                    else:
-                        state = "PREHEATING"
+                    state = "PREHEATING"
 
             elif command == "STOP":
                 heater_output = 0.0
@@ -344,11 +374,20 @@ try:
                 )
 
                 last_setpoint_c = setpoint_c
+                active_model_b = ROAST_MODEL_B
 
-                heater_output = calculate_mpc(temp_c, setpoint_c)
+                heater_output = calculate_mpc(
+                    temp_c,
+                    target_c,
+                    elapsed,
+                    roast_start_temp_c,
+                    model_b=ROAST_MODEL_B
+                )
                 heater_output = round(heater_output, 1)
 
                 adapt_model_b(temp_c, setpoint_c, elapsed)
+
+                active_model_b = ROAST_MODEL_B
 
                 if temp_c > MAX_SAFE_TEMP_C:
                     heater_output = 0.0
@@ -377,7 +416,7 @@ try:
                     round(roast_start_temp_c, 2) if roast_start_temp_c is not None else "",
                     RAMP_MIDPOINT_MIN,
                     RAMP_STEEPNESS,
-                    round(MODEL_B, 6),
+                    round(active_model_b, 6),
                     heater_output,
                     enable.value,
                     state
@@ -391,7 +430,7 @@ try:
                 f"Setpoint: {setpoint_c:.1f} °C | "
                 f"MPC Heater: {heater_output:.1f}% | "
                 f"Fan: {actual_fan_percent:.1f}% | "
-                f"Model B: {MODEL_B:.6f} | {state}"
+                f"Model B: {active_model_b:.6f} | {state}"
             )
 
             on_time = CONTROL_WINDOW_S * (heater_output / 100)
@@ -423,7 +462,7 @@ try:
                     round(roast_start_temp_c, 2) if roast_start_temp_c is not None else "",
                     RAMP_MIDPOINT_MIN,
                     RAMP_STEEPNESS,
-                    round(MODEL_B, 6),
+                    round(active_model_b, 6),
                     heater_output,
                     enable.value,
                     state

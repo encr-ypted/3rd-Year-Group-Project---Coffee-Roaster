@@ -24,27 +24,27 @@ MOTOR_ON_SPEED = 0.0
 MOTOR_OFF_SPEED = 1.0
 
 FAN_START_SPEED = 0.0
-FAN_END_SPEED = 0.15
+FAN_END_SPEED = 0.1
 FAN_DECREASE_TIME_S = 300
 
-FAN_RAMP_TIME_S = 0.1
+FAN_RAMP_TIME_S = 1
 FAN_RAMP_STEPS = 10
 fan_ramp_done = False
 
 PREHEAT_TARGET_C = 180.0
-PREHEAT_STABLE_BAND_C = 4.0
+PREHEAT_STABLE_BAND_C = 3.0
 PREHEAT_DROP_DETECT_C = 10.0
 BEAN_DROP_RISE_CONFIRM_C = 1.0
 
 AMBIENT_C = 25.0
 MODEL_A = 0.9978
-MODEL_B = 0.0036
+MODEL_B = 0.0058
 
 MODEL_B_MIN = 0.0035
 MODEL_B_MAX = 0.0080
 MODEL_B_ADAPT_INTERVAL_S = 20.0
-MODEL_B_ADAPT_STEP = 0.0001
-MODEL_B_ERROR_THRESHOLD_C = 1.5
+MODEL_B_ADAPT_STEP = 0.0002
+MODEL_B_ERROR_THRESHOLD_C = 1
 
 PREDICTION_HORIZON = 120
 DUTY_STEP = 1
@@ -53,8 +53,8 @@ WEIGHT_TRACKING = 15.0
 WEIGHT_HEATER_CHG_IN = 0.01
 WEIGHT_OVERSHOOT = 10.0
 
-RAMP_MIDPOINT_MIN = 3.5
-RAMP_STEEPNESS =0.75
+RAMP_MIDPOINT_MIN = 2.0
+RAMP_STEEPNESS = 1.0
 
 previous_heater_output = 0.0
 roast_start_temp_c = None
@@ -302,9 +302,7 @@ try:
                 setpoint_c = PREHEAT_TARGET_C
 
                 if bean_drop_started:
-                    setpoint_c = PREHEAT_TARGET_C
-                    heater_output = calculate_mpc(temp_c, setpoint_c)
-                    heater_output = round(heater_output, 1)
+                    heater_output = 0.0
                     state = "BEAN_DROP_DETECTED_WAITING_FOR_BOTTOM"
                 else:
                     heater_output = calculate_mpc(temp_c, setpoint_c)
@@ -320,7 +318,7 @@ try:
             elif command == "STOP":
                 heater_output = 0.0
 
-                if temp_c < 45.0:
+                if temp_c < 37.0:
                     fan_off()
                     time.sleep(5)
                     state = "IDLE"

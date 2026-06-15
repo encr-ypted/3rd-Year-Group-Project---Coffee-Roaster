@@ -1,7 +1,7 @@
 import { ref } from 'vue';
 import { createSensorFaultHold } from './sensorFaultHold';
 
-const HOST = "samimarouf:8000"
+const HOST = "coffee:8000"
 const API_BASE = `http://${HOST}`;
 const WS_URL = `ws://${HOST}/ws/telemetry`;
 
@@ -17,6 +17,7 @@ const isConnected = ref(false);
 const lastError = ref(null);
 const roastProfiles = ref([]);
 const profilesLoaded = ref(false);
+const hasStartedRealRoast = ref(false);
 
 const liveData = ref({
     timestamp: 0,
@@ -28,6 +29,7 @@ const liveData = ref({
     heaterPwm: 0,
     fanPwm: 0,
     state: 'IDLE',
+    rawState: 'IDLE',
     heaterHalted: false,
     canResume: false,
     sensorFault: null,
@@ -36,7 +38,6 @@ const liveData = ref({
 
 const roastDataPoints = ref([]);
 const roastPlan = ref(null);
-/** Bean temp at roast start — locked from Pi telemetry for chart alignment. */
 const roastStartTemp = ref(null);
 const sensorFaultHold = createSensorFaultHold();
 
@@ -51,21 +52,21 @@ function lockRoastStartTemp(message) {
 }
 
 function syncRoastPlanFromTelemetry(message) {
-    if (!roastPlan.value || message.state === 'IDLE') {
-        return;
-    }
+    if (message.state === 'IDLE') return;
 
     const lockedStart = lockRoastStartTemp(message);
     if (roastStartTemp.value == null && lockedStart != null) {
         roastStartTemp.value = lockedStart;
     }
 
+    if (roastStartTemp.value == null) return;
+
     roastPlan.value = {
-        startTemp: roastStartTemp.value ?? roastPlan.value.startTemp,
-        target: message.target ?? roastPlan.value.target,
-        midpointMin: message.ramp_midpoint_min ?? roastPlan.value.midpointMin,
-        steepness: message.ramp_steepness ?? roastPlan.value.steepness,
-        locked: roastStartTemp.value != null,
+        startTemp: roastStartTemp.value,
+        target: message.target ?? roastPlan.value?.target ?? liveData.value.targetTemp,
+        midpointMin: message.ramp_midpoint_min ?? roastPlan.value?.midpointMin ?? 2,
+        steepness: message.ramp_steepness ?? roastPlan.value?.steepness ?? 1,
+        locked: true,
     };
 }
 
@@ -119,6 +120,15 @@ export const useCoffeeRoaster = () => {
                 const message = JSON.parse(event.data);
 
                 if (message.type === 'telemetry') {
+                    const wasPreheat = liveData.value.state === 'PREHEAT';
+                    const nowRoasting = message.state === 'ROASTING';
+
+                    if (wasPreheat && nowRoasting && message.timestamp <= 1) {
+                        roastDataPoints.value = [];
+                        roastStartTemp.value = null;
+                        hasStartedRealRoast.value = true;
+                    }
+
                     liveData.value = {
                         ...liveData.value,
                         timestamp: message.timestamp,
@@ -132,6 +142,7 @@ export const useCoffeeRoaster = () => {
                         heaterPwm: message.heater_pwm,
                         fanPwm: message.fan_pwm,
                         state: message.state,
+                        rawState: message.raw_state ?? message.state,
                         heaterHalted: message.heater_halted ?? liveData.value.heaterHalted,
                         canResume: message.can_resume ?? false,
                         testSpin:
@@ -139,14 +150,13 @@ export const useCoffeeRoaster = () => {
                                 ? message.test_spin
                                 : liveData.value.testSpin,
                     };
+
                     sensorFaultHold.apply(
                         (v) => { liveData.value.sensorFault = v },
                         message.sensor_fault ?? null,
                     );
 
-                    if (message.state === 'IDLE') {
-                        roastStartTemp.value = null;
-                    } else {
+                    if (message.state !== 'IDLE') {
                         syncRoastPlanFromTelemetry(message);
                     }
 
@@ -155,6 +165,7 @@ export const useCoffeeRoaster = () => {
                     }
                 } else if (message.type === 'system_state') {
                     liveData.value.state = message.state;
+                    liveData.value.rawState = message.raw_state ?? message.state;
                 } else if (message.type === 'heater_status') {
                     liveData.value.heaterHalted = message.heater_halted ?? false;
                 } else if (message.type === 'roast_action') {
@@ -166,6 +177,7 @@ export const useCoffeeRoaster = () => {
                     }
                     if (message.state !== undefined) {
                         liveData.value.state = message.state;
+                        liveData.value.rawState = message.raw_state ?? message.state;
                     }
                     if (
                         message.action === 'TEST_SPIN'
@@ -173,8 +185,7 @@ export const useCoffeeRoaster = () => {
                         || message.action === 'TEST_SPIN_STOP'
                     ) {
                         if (!message.ok) {
-                            lastError.value =
-                                'Test spin only works when the roaster is idle';
+                            lastError.value = 'Test spin only works when the roaster is idle';
                         } else {
                             lastError.value = null;
                         }
@@ -207,11 +218,18 @@ export const useCoffeeRoaster = () => {
             roastPlan.value = null;
             return;
         }
+
+        if (!hasStartedRealRoast.value) {
+            roastPlan.value = null;
+            return;
+        }
+
         roastPlan.value = {
-            startTemp: liveData.value.temp ?? 20,
+            startTemp: roastStartTemp.value ?? liveData.value.temp ?? 20,
             target: profile.target_c,
             midpointMin: profile.rampMid ?? 2,
             steepness: profile.rampK ?? 1,
+            locked: roastStartTemp.value != null,
         };
     };
 
@@ -219,8 +237,8 @@ export const useCoffeeRoaster = () => {
         if (!isConnected.value) return;
         roastDataPoints.value = [];
         roastStartTemp.value = null;
-        const profile = roastProfiles.value.find((p) => p.id === profileId);
-        setRoastPlanFromProfile(profile);
+        hasStartedRealRoast.value = false;
+        roastPlan.value = null;
         sendJson({ action: 'START_ROAST', profile_id: profileId });
     };
 
@@ -266,6 +284,7 @@ export const useCoffeeRoaster = () => {
         profilesLoaded,
         roastDataPoints,
         roastPlan,
+        hasStartedRealRoast,
         setRoastPlanFromProfile,
         startRoast,
         stopRoast,

@@ -34,10 +34,14 @@ def split_counts(n_items: int, train_ratio: float, validate_ratio: float) -> tup
     return train_count, validate_count, test_count
 
 
-def has_class_folders(input_dir: Path) -> bool:
-    direct_images = [path for path in input_dir.iterdir() if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}]
+def mixed_label_layout(input_dir: Path) -> tuple[list[Path], list[Path]]:
+    direct_images = [
+        path
+        for path in input_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
+    ]
     image_dirs = [path for path in input_dir.iterdir() if path.is_dir() and any(iter_images(path))]
-    return bool(image_dirs) and not direct_images
+    return direct_images, image_dirs
 
 
 def copy_group(
@@ -80,13 +84,23 @@ def main() -> int:
         print(f"Input directory does not exist: {input_dir}")
         return 1
 
+    direct_images, image_dirs = mixed_label_layout(input_dir)
+    if direct_images and image_dirs:
+        print("Dataset split failed: labelled class folders and unlabelled root images are mixed together.")
+        print("Move every root-level image into one of the class folders before splitting.")
+        print("Class folders with images:")
+        for class_dir in image_dirs:
+            print(f"  - {class_dir.name}")
+        print(f"Root-level unlabelled image count: {len(direct_images)}")
+        return 1
+
     for directory in [args.train_dir, args.validate_dir, args.test_dir]:
         clear_directory(directory)
 
     temp_output_root = ensure_dir(input_dir.parent / "_split_tmp")
     clear_directory(temp_output_root)
     rng = random.Random(args.seed)
-    class_mode = has_class_folders(input_dir)
+    class_mode = bool(image_dirs) and not direct_images
     groups: list[tuple[str, Path, list[Path]]] = []
 
     if class_mode:

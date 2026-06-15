@@ -2,11 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 from pathlib import Path
 
 from PIL import Image
 
 from paths import RAW_DIR, RESIZED_DIR, clear_directory, ensure_dir, iter_images
+
+
+CLASS_LABEL_DIRS = ("bean", "no_bean", "corrupted")
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,6 +25,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--label", help="Optional class folder name, e.g. bean or no_bean.")
     parser.add_argument("--clear-output", action="store_true", help="Delete old cropped images first.")
     return parser.parse_args()
+
+
+def ensure_class_label_dirs(output_dir: Path) -> None:
+    for label in CLASS_LABEL_DIRS:
+        ensure_dir(output_dir / label)
+
+
+def clear_crop_outputs(output_dir: Path, label: str | None) -> None:
+    if label:
+        clear_directory(output_dir / label)
+        return
+
+    for child in output_dir.iterdir():
+        if child.name == ".gitkeep" or child.name in CLASS_LABEL_DIRS:
+            continue
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
 
 
 def output_path_for(image_path: Path, input_dir: Path, output_dir: Path, label: str | None) -> Path:
@@ -47,8 +70,9 @@ def main() -> int:
     args = parse_args()
     input_dir = args.input_dir
     output_dir = ensure_dir(args.output_dir)
+    ensure_class_label_dirs(output_dir)
     if args.clear_output:
-        clear_directory(output_dir)
+        clear_crop_outputs(output_dir, args.label)
 
     crop_box = (args.x1, args.y1, args.x2, args.y2)
     if args.x1 < 0 or args.y1 < 0 or args.x1 >= args.x2 or args.y1 >= args.y2:
@@ -64,6 +88,9 @@ def main() -> int:
     print(f"Input: {input_dir}")
     print(f"Output: {output_dir}")
     print(f"Crop box: {crop_box}")
+    print(f"Protected label folders: {', '.join(CLASS_LABEL_DIRS)}")
+    if not args.label:
+        print("Unlabelled crops will be saved in the output root. Move them into a label folder before splitting.")
     if args.resize:
         print(f"Resize cropped output to: {args.resize[0]}x{args.resize[1]}")
 

@@ -19,6 +19,7 @@ except ImportError as exc:
     print("PyTorch is required for training. Install torch before running this script.")
     raise SystemExit(1) from exc
 
+from model_utils import ConfigurableCNN
 from paths import MODEL_DIR, TEST_DIR, TRAIN_AUGMENTED_DIR, VALIDATE_DIR, ensure_dir, iter_images
 
 
@@ -76,48 +77,6 @@ class ImageFolderDataset(Dataset):
         return tensor, torch.tensor(class_index, dtype=torch.long)
 
 
-class ConfigurableCNN(nn.Module):
-    def __init__(self, *, num_classes: int, spec: dict[str, Any]) -> None:
-        super().__init__()
-        conv_channels = spec["conv_channels"]
-        kernel_size = int(spec.get("kernel_size", 3))
-        padding = kernel_size // 2
-        batch_norm = bool(spec.get("batch_norm", True))
-        pool_size = int(spec.get("pool_size", 4))
-
-        layers: list[nn.Module] = []
-        in_channels = 3
-        for out_channels in conv_channels:
-            layers.append(nn.Conv2d(in_channels, int(out_channels), kernel_size=kernel_size, padding=padding))
-            if batch_norm:
-                layers.append(nn.BatchNorm2d(int(out_channels)))
-            layers.append(nn.ReLU(inplace=True))
-            layers.append(nn.MaxPool2d(kernel_size=2))
-            in_channels = int(out_channels)
-        layers.append(nn.AdaptiveAvgPool2d((pool_size, pool_size)))
-        self.features = nn.Sequential(*layers)
-
-        dense_units = spec.get("dense_units", [64])
-        if isinstance(dense_units, int):
-            dense_units = [dense_units]
-        dropout = float(spec.get("dropout", 0.25))
-
-        classifier_layers: list[nn.Module] = []
-        current_units = int(conv_channels[-1]) * pool_size * pool_size
-        for units in dense_units:
-            classifier_layers.append(nn.Linear(current_units, int(units)))
-            classifier_layers.append(nn.ReLU(inplace=True))
-            classifier_layers.append(nn.Dropout(dropout))
-            current_units = int(units)
-        classifier_layers.append(nn.Linear(current_units, num_classes))
-        self.classifier = nn.Sequential(*classifier_layers)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = self.features(x)
-        x = torch.flatten(x, 1)
-        return self.classifier(x)
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train and compare several CNN models for bean/no-bean detection.")
     parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parent / "model_config.json")
@@ -136,7 +95,17 @@ def choose_device(requested: str) -> torch.device:
         if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             return torch.device("mps")
         return torch.device("cpu")
+    if requested == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA was requested, but PyTorch cannot access a CUDA GPU.")
+    if requested == "mps" and not (hasattr(torch.backends, "mps") and torch.backends.mps.is_available()):
+        raise RuntimeError("MPS was requested, but PyTorch cannot access an MPS device.")
     return torch.device(requested)
+
+
+def device_description(device: torch.device) -> str:
+    if device.type == "cuda":
+        return f"{device} ({torch.cuda.get_device_name(0)})"
+    return str(device)
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -289,7 +258,11 @@ def main() -> int:
     args = parse_args()
     config = load_config(args.config)
     set_seed(int(config.get("seed", 42)))
-    device = choose_device(args.device)
+    try:
+        device = choose_device(args.device)
+    except RuntimeError as exc:
+        print(exc)
+        return 1
     model_dir = ensure_dir(args.model_dir)
 
     image_size = tuple(int(value) for value in config["image_size"])
@@ -346,7 +319,7 @@ def main() -> int:
     )
 
     print("SmartRoast CNN model comparison")
-    print(f"Device: {device}")
+    print(f"Device: {device_description(device)}")
     print(f"Classes: {train_dataset.class_names}")
     print(f"Dataset sizes: train_aug={len(train_dataset)}, validate={len(validate_dataset)}, test={len(test_dataset)}")
 

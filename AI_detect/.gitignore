@@ -2,6 +2,15 @@
 !/raw/.gitkeep
 /resized/*
 !/resized/.gitkeep
+!/resized/bean/
+!/resized/no_bean/
+!/resized/corrupted/
+/resized/bean/*
+!/resized/bean/.gitkeep
+/resized/no_bean/*
+!/resized/no_bean/.gitkeep
+/resized/corrupted/*
+!/resized/corrupted/.gitkeep
 /train_set/*
 !/train_set/.gitkeep
 /validate_set/*

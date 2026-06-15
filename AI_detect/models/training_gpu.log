@@ -1,0 +1,103 @@
+SmartRoast CNN model comparison
+Device: cuda (NVIDIA GeForce RTX 4080 Laptop GPU)
+Classes: ['bean', 'corrupted', 'no_bean']
+Dataset sizes: train_aug=3354, validate=70, test=70
+Stage 1 training: tiny_cnn
+  epoch 01: train loss 0.1246, train acc 0.962, val loss 0.0167, val acc 1.000
+  epoch 02: train loss 0.0359, train acc 0.990, val loss 0.0049, val acc 1.000
+  epoch 03: train loss 0.0124, train acc 0.996, val loss 0.0013, val acc 1.000
+  epoch 04: train loss 0.0106, train acc 0.997, val loss 0.0039, val acc 1.000
+  epoch 05: train loss 0.0048, train acc 0.999, val loss 0.0003, val acc 1.000
+  epoch 06: train loss 0.0022, train acc 0.999, val loss 0.0002, val acc 1.000
+  epoch 07: train loss 0.0010, train acc 1.000, val loss 0.0000, val acc 1.000
+  epoch 08: train loss 0.0127, train acc 0.996, val loss 0.0001, val acc 1.000
+Best validation for tiny_cnn: acc 1.000, loss 0.0000, epoch 7
+Stage 1 training: balanced_cnn
+  epoch 01: train loss 0.1149, train acc 0.967, val loss 0.0272, val acc 0.986
+  epoch 02: train loss 0.0280, train acc 0.990, val loss 0.0012, val acc 1.000
+  epoch 03: train loss 0.0242, train acc 0.991, val loss 0.1623, val acc 0.971
+  epoch 04: train loss 0.0109, train acc 0.997, val loss 0.0007, val acc 1.000
+  epoch 05: train loss 0.0060, train acc 0.998, val loss 0.0013, val acc 1.000
+  epoch 06: train loss 0.0048, train acc 0.999, val loss 0.0000, val acc 1.000
+  epoch 07: train loss 0.0165, train acc 0.996, val loss 0.0001, val acc 1.000
+  epoch 08: train loss 0.0010, train acc 1.000, val loss 0.0001, val acc 1.000
+Best validation for balanced_cnn: acc 1.000, loss 0.0000, epoch 6
+Stage 1 training: deeper_cnn
+  epoch 01: train loss 0.1369, train acc 0.956, val loss 0.0021, val acc 1.000
+  epoch 02: train loss 0.0493, train acc 0.987, val loss 0.0018, val acc 1.000
+  epoch 03: train loss 0.0177, train acc 0.995, val loss 0.0374, val acc 0.986
+  epoch 04: train loss 0.0085, train acc 0.997, val loss 0.0002, val acc 1.000
+  epoch 05: train loss 0.0151, train acc 0.995, val loss 0.0022, val acc 1.000
+  epoch 06: train loss 0.0057, train acc 0.998, val loss 0.0001, val acc 1.000
+  epoch 07: train loss 0.0083, train acc 0.997, val loss 0.0007, val acc 1.000
+  epoch 08: train loss 0.0265, train acc 0.995, val loss 0.0001, val acc 1.000
+Best validation for deeper_cnn: acc 1.000, loss 0.0001, epoch 6
+Stage 1 training: wide_cnn
+  epoch 01: train loss 0.0859, train acc 0.974, val loss 0.0138, val acc 1.000
+  epoch 02: train loss 0.0306, train acc 0.991, val loss 0.2813, val acc 0.957
+  epoch 03: train loss 0.0229, train acc 0.993, val loss 0.0002, val acc 1.000
+  epoch 04: train loss 0.0206, train acc 0.993, val loss 0.0003, val acc 1.000
+  epoch 05: train loss 0.0037, train acc 0.999, val loss 0.0000, val acc 1.000
+  epoch 06: train loss 0.0032, train acc 0.999, val loss 0.0094, val acc 1.000
+  epoch 07: train loss 0.0392, train acc 0.993, val loss 0.0003, val acc 1.000
+  epoch 08: train loss 0.0071, train acc 0.998, val loss 0.0036, val acc 1.000
+Best validation for wide_cnn: acc 1.000, loss 0.0000, epoch 5
+Stage 1 training: regularised_cnn
+  epoch 01: train loss 0.1241, train acc 0.962, val loss 0.0434, val acc 0.971
+  epoch 02: train loss 0.0178, train acc 0.995, val loss 0.0908, val acc 0.971
+  epoch 03: train loss 0.0080, train acc 0.998, val loss 0.0042, val acc 1.000
+  epoch 04: train loss 0.0324, train acc 0.993, val loss 0.0051, val acc 1.000
+  epoch 05: train loss 0.0235, train acc 0.992, val loss 0.0039, val acc 1.000
+  epoch 06: train loss 0.0052, train acc 0.999, val loss 0.0003, val acc 1.000
+  epoch 07: train loss 0.0077, train acc 0.999, val loss 0.0250, val acc 0.986
+  epoch 08: train loss 0.0034, train acc 0.999, val loss 0.0024, val acc 1.000
+Best validation for regularised_cnn: acc 1.000, loss 0.0003, epoch 6
+Top validation models:
+  1. wide_cnn val acc 1.000, val loss 0.0000
+  2. balanced_cnn val acc 1.000, val loss 0.0000
+  3. tiny_cnn val acc 1.000, val loss 0.0000
+Final training with train_set_augmented + validate_set: wide_cnn
+  final epoch 01: train loss 0.0946, train acc 0.971
+  final epoch 02: train loss 0.0458, train acc 0.989
+  final epoch 03: train loss 0.0045, train acc 0.999
+  final epoch 04: train loss 0.0076, train acc 0.998
+  final epoch 05: train loss 0.0021, train acc 0.999
+  final epoch 06: train loss 0.0009, train acc 1.000
+  final epoch 07: train loss 0.0440, train acc 0.991
+  final epoch 08: train loss 0.0084, train acc 0.998
+  final epoch 09: train loss 0.0184, train acc 0.997
+  final epoch 10: train loss 0.0164, train acc 0.995
+  final epoch 11: train loss 0.0049, train acc 0.999
+  final epoch 12: train loss 0.0026, train acc 0.999
+Test result for wide_cnn: acc 0.986, loss 0.2138
+Final training with train_set_augmented + validate_set: balanced_cnn
+  final epoch 01: train loss 0.0787, train acc 0.975
+  final epoch 02: train loss 0.0209, train acc 0.993
+  final epoch 03: train loss 0.0238, train acc 0.994
+  final epoch 04: train loss 0.0165, train acc 0.995
+  final epoch 05: train loss 0.0116, train acc 0.996
+  final epoch 06: train loss 0.0290, train acc 0.991
+  final epoch 07: train loss 0.0021, train acc 0.999
+  final epoch 08: train loss 0.0036, train acc 0.999
+  final epoch 09: train loss 0.0004, train acc 1.000
+  final epoch 10: train loss 0.0015, train acc 0.999
+  final epoch 11: train loss 0.0003, train acc 1.000
+  final epoch 12: train loss 0.0002, train acc 1.000
+Test result for balanced_cnn: acc 0.986, loss 0.2713
+Final training with train_set_augmented + validate_set: tiny_cnn
+  final epoch 01: train loss 0.1150, train acc 0.966
+  final epoch 02: train loss 0.0323, train acc 0.992
+  final epoch 03: train loss 0.0266, train acc 0.992
+  final epoch 04: train loss 0.0082, train acc 0.997
+  final epoch 05: train loss 0.0228, train acc 0.992
+  final epoch 06: train loss 0.0023, train acc 0.999
+  final epoch 07: train loss 0.0032, train acc 0.999
+  final epoch 08: train loss 0.0125, train acc 0.996
+  final epoch 09: train loss 0.0038, train acc 0.999
+  final epoch 10: train loss 0.0047, train acc 0.999
+  final epoch 11: train loss 0.0042, train acc 0.999
+  final epoch 12: train loss 0.0020, train acc 0.999
+Test result for tiny_cnn: acc 0.986, loss 0.2315
+Best model: wide_cnn with test acc 0.986
+Saved best model to: E:\Git_clone\3rd-Year-Group-Project---Coffee-Roaster\AI_detect\models\best_model.pt
+Saved training summary to: E:\Git_clone\3rd-Year-Group-Project---Coffee-Roaster\AI_detect\models\training_summary.json

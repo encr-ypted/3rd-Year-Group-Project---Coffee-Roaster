@@ -7,14 +7,31 @@ import time
 from pathlib import Path
 
 from pi_ai_detector import InferenceResult, SmartRoastAIDetector
-from paths import MODEL_DIR, TEST_OUTPUT_DIR
+from paths import DEFAULT_CLASS_NAMES, DEFAULT_PT_MODEL_PATH, DEFAULT_RPK_MODEL_PATH, TEST_OUTPUT_DIR
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run SmartRoast bean/corrupted inference on Raspberry Pi camera frames.")
-    parser.add_argument("--model", type=Path, default=MODEL_DIR / "best_model.pt")
+    parser.add_argument(
+        "--model",
+        type=Path,
+        default=DEFAULT_RPK_MODEL_PATH,
+        help=f"Path to the IMX500 .rpk model. Default: {DEFAULT_RPK_MODEL_PATH}",
+    )
+    parser.add_argument("--model-format", choices=["auto", "rpk", "pt"], default="auto")
+    parser.add_argument(
+        "--class-names",
+        nargs="+",
+        default=list(DEFAULT_CLASS_NAMES),
+        help="Class order used by the .rpk model output.",
+    )
     parser.add_argument("--backend", choices=["picamera2", "opencv", "mock"], default="picamera2")
-    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
+    parser.add_argument(
+        "--device",
+        choices=["auto", "cpu", "cuda"],
+        default="auto",
+        help=f"Only used with --model-format pt, for example --model {DEFAULT_PT_MODEL_PATH}.",
+    )
     parser.add_argument("--camera-index", type=int, default=0, help="OpenCV camera index when using --backend opencv.")
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1080)
@@ -31,11 +48,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save-crops", action="store_true", help="Save ROI crops used for inference.")
     parser.add_argument("--output-dir", type=Path, default=TEST_OUTPUT_DIR / "pi_inference")
     parser.add_argument("--csv-log", type=Path, help="Optional CSV log path.")
-    parser.add_argument(
-        "--imx500-rpk",
-        type=Path,
-        help="Reserved for future AI Camera accelerated inference. Current script uses the PyTorch .pt path.",
-    )
     return parser.parse_args()
 
 
@@ -52,16 +64,12 @@ def append_csv(path: Path, result: InferenceResult) -> None:
 
 def main() -> int:
     args = parse_args()
-    if args.imx500_rpk:
-        print("IMX500 .rpk acceleration is not used by this script yet.")
-        print("The current best_model.pt must be converted to an IMX500 network.rpk before on-camera acceleration is possible.")
-        print("Continuing with the PyTorch inference path on the Raspberry Pi host.")
-
     roi = tuple(args.roi) if args.roi else None
 
     try:
         detector = SmartRoastAIDetector(
             model_path=args.model,
+            model_format=args.model_format,
             backend=args.backend,
             device=args.device,
             camera_index=args.camera_index,
@@ -71,6 +79,7 @@ def main() -> int:
             roi=roi,
             roi_mode=args.roi_mode,
             output_dir=args.output_dir,
+            class_names=args.class_names,
         )
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
         print(exc)
@@ -78,7 +87,8 @@ def main() -> int:
 
     print("SmartRoast Raspberry Pi inference")
     print(f"Backend: {args.backend}")
-    print(f"Device: {detector.device}")
+    print(f"Inference: {detector.device_label}")
+    print(f"Model format: {detector.model_format}")
     print(f"Model: {args.model}")
     print(f"Classes: {detector.class_names}")
     print(f"Count: {'until Ctrl+C' if args.count == 0 else args.count}")

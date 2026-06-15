@@ -16,6 +16,10 @@ PLOT_DIR = ROOT / "plot"
 MODEL_DIR = ROOT / "models"
 TEST_OUTPUT_DIR = ROOT / "test_outputs"
 
+DEFAULT_RPK_MODEL_PATH = MODEL_DIR / "coffee_qmodel.rpk"
+DEFAULT_PT_MODEL_PATH = MODEL_DIR / "best_model.pt"
+DEFAULT_CLASS_NAMES = ("bean", "corrupted", "no_bean")
+
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".webp"}
 
 

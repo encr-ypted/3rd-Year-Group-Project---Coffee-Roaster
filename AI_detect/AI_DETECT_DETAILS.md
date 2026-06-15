@@ -274,13 +274,19 @@ The script prints the predicted class and probabilities for `bean`, `no_bean`, a
 
 ## Raspberry Pi Deployment
 
-The current deployable model is `models/best_model.pt`, which is a PyTorch checkpoint. The recommended integration path is to keep one detector object alive so the model and camera are loaded once:
+The default Raspberry Pi deployment path now uses the Raspberry Pi AI Camera IMX500 `.rpk` model. Copy the converted model to:
+
+```text
+AI_detect/models/coffee_qmodel.rpk
+```
+
+The reusable detector keeps the camera and model open so inference can be called repeatedly without reloading the model:
 
 ```python
 from pi_ai_detector import SmartRoastAIDetector
 
 detector = SmartRoastAIDetector(
-    model_path="AI_detect/models/best_model.pt",
+    model_path="AI_detect/models/coffee_qmodel.rpk",
     backend="picamera2",
 )
 
@@ -289,31 +295,35 @@ with detector:
     print(result.to_dict())
 ```
 
-The returned result includes `prediction`, class probabilities, mean grayscale, ROI coordinates, frame size, ROI size, inference time, and optional crop path. This object-oriented path is the best option for backend integration.
+The returned result includes `prediction`, class probabilities, mean grayscale, ROI coordinates, frame size, ROI size, inference time, model format, and optional crop path. This object-oriented path is the best option for backend integration.
 
-The `09_pi_camera_inference.py` script is now a command-line wrapper around the same reusable detector class. It can still run continuously from a terminal:
-
-```bash
-python 09_pi_camera_inference.py --backend picamera2 --device cpu --count 0 --interval 1 --save-crops --csv-log test_outputs/pi_inference.csv
-```
-
-For a quick non-camera check of the command-line wrapper:
+The `09_pi_camera_inference.py` script is a command-line wrapper around the same reusable detector class. It runs the `.rpk` model by default:
 
 ```bash
-python 09_pi_camera_inference.py --backend mock --device cpu --count 1
+python 09_pi_camera_inference.py --backend picamera2 --count 0 --interval 1 --save-crops --csv-log test_outputs/pi_inference.csv
 ```
 
-To test the reusable detector class directly without camera hardware:
+The class order for the current model is expected to be:
+
+```text
+bean corrupted no_bean
+```
+
+If the exported `.rpk` uses a different output order, pass it explicitly:
 
 ```bash
-python 10_test_detector_loop.py --backend mock --count 3 --interval 2 --save-crops
+python 09_pi_camera_inference.py --class-names bean corrupted no_bean
 ```
 
-Both scripts capture a frame, apply the fixed ROI crop, run the classifier, print class probabilities, and report the ROI mean grayscale value. If the class is `bean`, the grayscale value can be used as the roast-colour indicator. If the class is `no_bean` or `corrupted`, the grayscale value should not be used for roast-colour control.
+For laptop development or old PyTorch checkpoint testing, explicitly select the `.pt` path:
 
-Do not start a new Python process for every frame. Keep one `SmartRoastAIDetector` instance alive and call `infer_once()` repeatedly. Otherwise, the Raspberry Pi will repeatedly import PyTorch, reload the model, and reopen the camera.
+```bash
+python 10_test_detector_loop.py --model-format pt --model models/best_model.pt --backend mock --count 3 --interval 2 --save-crops
+```
 
-The Raspberry Pi AI Camera can accelerate inference through the Sony IMX500 sensor, but it cannot directly accelerate this `.pt` checkpoint. To use on-camera acceleration, the model must first be quantised, converted to IMX500 format, and packaged as a `.rpk` firmware file. The current `09_pi_camera_inference.py` script therefore uses the PyTorch path and treats `--imx500-rpk` as a future extension point.
+Both scripts capture a frame, apply the fixed ROI crop for grayscale reporting, run the classifier, print class probabilities, and report the ROI mean grayscale value. If the class is `bean`, the grayscale value can be used as the roast-colour indicator. If the class is `no_bean` or `corrupted`, the grayscale value should not be used for roast-colour control.
+
+Do not start a new Python process for every frame. Keep one `SmartRoastAIDetector` instance alive and call `infer_once()` repeatedly. Otherwise, the Raspberry Pi will repeatedly reload the `.rpk` firmware and reopen the camera.
 
 ---
 

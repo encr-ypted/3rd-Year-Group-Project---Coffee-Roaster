@@ -1,0 +1,210 @@
+{
+  "class_names": [
+    "bean",
+    "corrupted",
+    "no_bean"
+  ],
+  "dataset_sizes": {
+    "train_augmented": 3354,
+    "validate": 70,
+    "test": 70
+  },
+  "stage1_results": [
+    {
+      "name": "wide_cnn",
+      "metrics": {
+        "validate_loss": 1.3660827192195159e-05,
+        "validate_accuracy": 1.0,
+        "train_loss": 0.003722686997013734,
+        "train_accuracy": 0.9985092426952892,
+        "epoch": 5
+      },
+      "spec": {
+        "name": "wide_cnn",
+        "conv_channels": [
+          24,
+          48,
+          96
+        ],
+        "dense_units": [
+          160
+        ],
+        "dropout": 0.25,
+        "batch_norm": true,
+        "pool_size": 4
+      }
+    },
+    {
+      "name": "balanced_cnn",
+      "metrics": {
+        "validate_loss": 2.074350211062535e-05,
+        "validate_accuracy": 1.0,
+        "train_loss": 0.004793978206152668,
+        "train_accuracy": 0.9985092426952892,
+        "epoch": 6
+      },
+      "spec": {
+        "name": "balanced_cnn",
+        "conv_channels": [
+          16,
+          32,
+          64
+        ],
+        "dense_units": [
+          128
+        ],
+        "dropout": 0.3,
+        "batch_norm": true,
+        "pool_size": 4
+      }
+    },
+    {
+      "name": "tiny_cnn",
+      "metrics": {
+        "validate_loss": 3.199664107731743e-05,
+        "validate_accuracy": 1.0,
+        "train_loss": 0.0010047925469402314,
+        "train_accuracy": 0.9997018485390579,
+        "epoch": 7
+      },
+      "spec": {
+        "name": "tiny_cnn",
+        "conv_channels": [
+          16,
+          32
+        ],
+        "dense_units": [
+          64
+        ],
+        "dropout": 0.2,
+        "batch_norm": true,
+        "pool_size": 4
+      }
+    },
+    {
+      "name": "deeper_cnn",
+      "metrics": {
+        "validate_loss": 9.284935797779781e-05,
+        "validate_accuracy": 1.0,
+        "train_loss": 0.00566390144376203,
+        "train_accuracy": 0.9976147883124628,
+        "epoch": 6
+      },
+      "spec": {
+        "name": "deeper_cnn",
+        "conv_channels": [
+          16,
+          32,
+          64,
+          96
+        ],
+        "dense_units": [
+          160,
+          64
+        ],
+        "dropout": 0.35,
+        "batch_norm": true,
+        "pool_size": 3
+      }
+    },
+    {
+      "name": "regularised_cnn",
+      "metrics": {
+        "validate_loss": 0.00030796342510127164,
+        "validate_accuracy": 1.0,
+        "train_loss": 0.0051939336075640654,
+        "train_accuracy": 0.9985092426952892,
+        "epoch": 6
+      },
+      "spec": {
+        "name": "regularised_cnn",
+        "conv_channels": [
+          16,
+          32,
+          48
+        ],
+        "dense_units": [
+          96
+        ],
+        "dropout": 0.45,
+        "batch_norm": true,
+        "pool_size": 4
+      }
+    }
+  ],
+  "final_results": [
+    {
+      "name": "wide_cnn",
+      "train_metrics": {
+        "train_loss": 0.0026001534563849615,
+        "train_accuracy": 0.9988317757009346,
+        "epoch": 12
+      },
+      "test_loss": 0.21384096390348922,
+      "test_accuracy": 0.9857142857142858,
+      "spec": {
+        "name": "wide_cnn",
+        "conv_channels": [
+          24,
+          48,
+          96
+        ],
+        "dense_units": [
+          160
+        ],
+        "dropout": 0.25,
+        "batch_norm": true,
+        "pool_size": 4
+      }
+    },
+    {
+      "name": "tiny_cnn",
+      "train_metrics": {
+        "train_loss": 0.0019758405149451247,
+        "train_accuracy": 0.9994158878504673,
+        "epoch": 12
+      },
+      "test_loss": 0.23149104286712827,
+      "test_accuracy": 0.9857142857142858,
+      "spec": {
+        "name": "tiny_cnn",
+        "conv_channels": [
+          16,
+          32
+        ],
+        "dense_units": [
+          64
+        ],
+        "dropout": 0.2,
+        "batch_norm": true,
+        "pool_size": 4
+      }
+    },
+    {
+      "name": "balanced_cnn",
+      "train_metrics": {
+        "train_loss": 0.0002405902694450971,
+        "train_accuracy": 1.0,
+        "epoch": 12
+      },
+      "test_loss": 0.271255976597681,
+      "test_accuracy": 0.9857142857142858,
+      "spec": {
+        "name": "balanced_cnn",
+        "conv_channels": [
+          16,
+          32,
+          64
+        ],
+        "dense_units": [
+          128
+        ],
+        "dropout": 0.3,
+        "batch_norm": true,
+        "pool_size": 4
+      }
+    }
+  ],
+  "best_model": "wide_cnn",
+  "best_model_path": "E:\\Git_clone\\3rd-Year-Group-Project---Coffee-Roaster\\AI_detect\\models\\best_model.pt"
+}

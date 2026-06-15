@@ -1,0 +1,22 @@
+{
+  "Memory Report": {
+    "Name": "coffee_qmodel",
+    "Runtime Memory Physical Size": "391.00KB",
+    "Model Memory Physical Size": "329.84KB",
+    "Reserved Memory": "1.00KB",
+    "Memory Usage": "721.84KB",
+    "Total Memory Available On Chip": "8.00MB",
+    "Memory Utilization": "9%",
+    "Fit In Chip": true,
+    "Input Persistent": true,
+    "Networks": [
+      {
+        "Hash": "coffee_qmodel",
+        "Name": "coffee_qmodel",
+        "Runtime Memory Physical Size": "391.00KB",
+        "Model Memory Physical Size": "329.84KB",
+        "Input Persistence Cost": "31.00KB"
+      }
+    ]
+  }
+}

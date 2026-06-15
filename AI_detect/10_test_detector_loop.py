@@ -6,14 +6,31 @@ import time
 from pathlib import Path
 
 from pi_ai_detector import SmartRoastAIDetector
-from paths import MODEL_DIR, TEST_OUTPUT_DIR
+from paths import DEFAULT_CLASS_NAMES, DEFAULT_PT_MODEL_PATH, DEFAULT_RPK_MODEL_PATH, TEST_OUTPUT_DIR
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Test the reusable SmartRoastAIDetector class.")
-    parser.add_argument("--model", type=Path, default=MODEL_DIR / "best_model.pt")
-    parser.add_argument("--backend", choices=["picamera2", "opencv", "mock"], default="mock")
-    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
+    parser.add_argument(
+        "--model",
+        type=Path,
+        default=DEFAULT_RPK_MODEL_PATH,
+        help=f"Path to the IMX500 .rpk model. Default: {DEFAULT_RPK_MODEL_PATH}",
+    )
+    parser.add_argument("--model-format", choices=["auto", "rpk", "pt"], default="auto")
+    parser.add_argument(
+        "--class-names",
+        nargs="+",
+        default=list(DEFAULT_CLASS_NAMES),
+        help="Class order used by the .rpk model output.",
+    )
+    parser.add_argument("--backend", choices=["picamera2", "opencv", "mock"], default="picamera2")
+    parser.add_argument(
+        "--device",
+        choices=["auto", "cpu", "cuda"],
+        default="auto",
+        help=f"Only used with --model-format pt, for example --model {DEFAULT_PT_MODEL_PATH}.",
+    )
     parser.add_argument("--camera-index", type=int, default=0)
     parser.add_argument("--width", type=int, default=1920)
     parser.add_argument("--height", type=int, default=1080)
@@ -34,6 +51,7 @@ def main() -> int:
     try:
         detector = SmartRoastAIDetector(
             model_path=args.model,
+            model_format=args.model_format,
             backend=args.backend,
             device=args.device,
             camera_index=args.camera_index,
@@ -43,6 +61,7 @@ def main() -> int:
             roi=roi,
             roi_mode=args.roi_mode,
             output_dir=args.output_dir,
+            class_names=args.class_names,
         )
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
         print(exc)
@@ -50,7 +69,8 @@ def main() -> int:
 
     print("SmartRoast detector loop test")
     print(f"Backend: {args.backend}")
-    print(f"Device: {detector.device}")
+    print(f"Inference: {detector.device_label}")
+    print(f"Model format: {detector.model_format}")
     print(f"Model is loaded once from: {args.model}")
     print(f"Interval: {args.interval:.1f}s")
     print(f"Count: {'until Ctrl+C' if args.count == 0 else args.count}")

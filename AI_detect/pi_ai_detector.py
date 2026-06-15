@@ -19,6 +19,8 @@ from paths import (
 
 
 RoiBox = tuple[int, int, int, int]
+Imx500RoiBox = tuple[int, int, int, int]
+DEFAULT_IMX500_FULL_SENSOR_SIZE = (4056, 3040)
 
 
 @dataclass
@@ -35,6 +37,7 @@ class InferenceResult:
     mean_grayscale: float
     inference_ms: float
     roi: RoiBox | str
+    imx500_roi: Imx500RoiBox | str
     frame_size: tuple[int, int]
     roi_size: tuple[int, int]
     model_format: str
@@ -47,6 +50,7 @@ class InferenceResult:
             "mean_grayscale": f"{self.mean_grayscale:.4f}",
             "inference_ms": f"{self.inference_ms:.3f}",
             "roi": self.roi,
+            "imx500_roi": self.imx500_roi,
             "frame_size": f"{self.frame_size[0]}x{self.frame_size[1]}",
             "roi_size": f"{self.roi_size[0]}x{self.roi_size[1]}",
             "model_format": self.model_format,
@@ -106,6 +110,70 @@ def validate_crop_box(box: RoiBox, width: int, height: int) -> None:
         raise ValueError(f"Invalid ROI {box} for image size {width}x{height}")
 
 
+def resolve_output_roi(
+    width: int,
+    height: int,
+    roi: RoiBox | None,
+    roi_mode: str,
+) -> RoiBox | str:
+    if roi is not None:
+        validate_crop_box(roi, width, height)
+        return roi
+
+    if roi_mode == "training-center":
+        box = centered_training_crop_box(width, height)
+        validate_crop_box(box, width, height)
+        return box
+
+    if roi_mode == "full-frame":
+        return "full-frame"
+
+    raise ValueError(f"Unsupported roi_mode: {roi_mode}")
+
+
+def output_roi_to_imx500_roi(
+    output_roi: RoiBox | str,
+    *,
+    output_size: tuple[int, int],
+    sensor_size: tuple[int, int],
+) -> Imx500RoiBox | None:
+    if output_roi == "full-frame":
+        return None
+    if not isinstance(output_roi, tuple):
+        raise ValueError(f"Unsupported output ROI: {output_roi}")
+
+    output_width, output_height = output_size
+    sensor_width, sensor_height = sensor_size
+    output_aspect = output_width / output_height
+    sensor_aspect = sensor_width / sensor_height
+
+    if sensor_aspect > output_aspect:
+        sensor_crop_height = sensor_height
+        sensor_crop_width = round(sensor_height * output_aspect)
+        sensor_crop_x = (sensor_width - sensor_crop_width) // 2
+        sensor_crop_y = 0
+    else:
+        sensor_crop_width = sensor_width
+        sensor_crop_height = round(sensor_width / output_aspect)
+        sensor_crop_x = 0
+        sensor_crop_y = (sensor_height - sensor_crop_height) // 2
+
+    scale_x = sensor_crop_width / output_width
+    scale_y = sensor_crop_height / output_height
+    x1, y1, x2, y2 = output_roi
+
+    x = round(sensor_crop_x + x1 * scale_x)
+    y = round(sensor_crop_y + y1 * scale_y)
+    width = round((x2 - x1) * scale_x)
+    height = round((y2 - y1) * scale_y)
+
+    x = max(0, min(x, sensor_width - 1))
+    y = max(0, min(y, sensor_height - 1))
+    width = max(1, min(width, sensor_width - x))
+    height = max(1, min(height, sensor_height - y))
+    return x, y, width, height
+
+
 def create_mock_frame(width: int, height: int) -> Image.Image:
     image = Image.new("RGB", (width, height), (35, 35, 35))
     draw = ImageDraw.Draw(image)
@@ -145,6 +213,9 @@ class PiFrameSource:
         warmup: float = 1.5,
         enable_imx500: bool = False,
         rpk_model_path: str | Path | None = None,
+        output_roi_for_inference: RoiBox | str | None = None,
+        imx500_roi_abs: Imx500RoiBox | None = None,
+        imx500_roi_mode: str = "match-output-roi",
     ) -> None:
         self.backend = backend
         self.camera_index = camera_index
@@ -153,6 +224,10 @@ class PiFrameSource:
         self.warmup = warmup
         self.enable_imx500 = enable_imx500
         self.rpk_model_path = Path(rpk_model_path) if rpk_model_path else None
+        self.output_roi_for_inference = output_roi_for_inference
+        self.imx500_roi_abs = imx500_roi_abs
+        self.imx500_roi_mode = imx500_roi_mode
+        self.applied_imx500_roi_abs: Imx500RoiBox | None = None
         self._picam2 = None
         self._imx500 = None
         self._cv2 = None
@@ -189,7 +264,29 @@ class PiFrameSource:
 
                 if hasattr(self._imx500, "show_network_fw_progress_bar"):
                     self._imx500.show_network_fw_progress_bar()
-                if hasattr(self._imx500, "set_auto_aspect_ratio"):
+
+                if self.imx500_roi_mode not in {"match-output-roi", "manual", "auto-aspect"}:
+                    raise ValueError(f"Unsupported IMX500 ROI mode: {self.imx500_roi_mode}")
+
+                if self.imx500_roi_abs is not None:
+                    if not hasattr(self._imx500, "set_inference_roi_abs"):
+                        raise RuntimeError("This Picamera2 IMX500 API does not support set_inference_roi_abs.")
+                    self.applied_imx500_roi_abs = self.imx500_roi_abs
+                    self._imx500.set_inference_roi_abs(self.applied_imx500_roi_abs)
+                elif self.imx500_roi_mode == "match-output-roi" and self.output_roi_for_inference is not None:
+                    sensor_size = self.get_full_sensor_resolution()
+                    self.applied_imx500_roi_abs = output_roi_to_imx500_roi(
+                        self.output_roi_for_inference,
+                        output_size=(self.width, self.height),
+                        sensor_size=sensor_size,
+                    )
+                    if self.applied_imx500_roi_abs is not None:
+                        if not hasattr(self._imx500, "set_inference_roi_abs"):
+                            raise RuntimeError("This Picamera2 IMX500 API does not support set_inference_roi_abs.")
+                        self._imx500.set_inference_roi_abs(self.applied_imx500_roi_abs)
+                elif self.imx500_roi_mode == "manual":
+                    raise RuntimeError("--imx500-roi-mode manual requires --imx500-roi-abs X Y W H.")
+                elif hasattr(self._imx500, "set_auto_aspect_ratio"):
                     self._imx500.set_auto_aspect_ratio()
 
                 intrinsics = getattr(self._imx500, "network_intrinsics", None)
@@ -271,6 +368,14 @@ class PiFrameSource:
             return None
         return self._imx500.get_outputs(metadata, add_batch=True)
 
+    def get_full_sensor_resolution(self) -> tuple[int, int]:
+        if self._imx500 is None:
+            return DEFAULT_IMX500_FULL_SENSOR_SIZE
+        if hasattr(self._imx500, "get_full_sensor_resolution"):
+            width, height = self._imx500.get_full_sensor_resolution()
+            return int(width), int(height)
+        return DEFAULT_IMX500_FULL_SENSOR_SIZE
+
     def get_imx500_labels(self) -> list[str] | None:
         if self._imx500 is None:
             return None
@@ -323,6 +428,8 @@ class SmartRoastAIDetector:
         class_names: Sequence[str] = DEFAULT_CLASS_NAMES,
         rpk_output_activation: str = "softmax",
         rpk_output_timeout: float = 2.0,
+        imx500_roi_abs: Imx500RoiBox | None = None,
+        imx500_roi_mode: str = "match-output-roi",
     ) -> None:
         self.model_path = Path(model_path)
         self.model_format = resolve_model_format(self.model_path, model_format)
@@ -334,6 +441,8 @@ class SmartRoastAIDetector:
         self.class_names = list(class_names)
         self.rpk_output_activation = rpk_output_activation
         self.rpk_output_timeout = rpk_output_timeout
+        self.imx500_roi_mode = imx500_roi_mode
+        self.output_roi_for_inference = resolve_output_roi(width, height, roi, roi_mode)
         self._torch = None
         self.model = None
         self.checkpoint: dict[str, Any] = {}
@@ -360,6 +469,9 @@ class SmartRoastAIDetector:
             warmup=warmup,
             enable_imx500=self.model_format == "rpk",
             rpk_model_path=self.model_path if self.model_format == "rpk" else None,
+            output_roi_for_inference=self.output_roi_for_inference if self.model_format == "rpk" else None,
+            imx500_roi_abs=imx500_roi_abs,
+            imx500_roi_mode=imx500_roi_mode,
         )
         self.processed = 0
         self._is_open = False
@@ -367,6 +479,16 @@ class SmartRoastAIDetector:
     @property
     def device_label(self) -> str:
         return "imx500" if self.model_format == "rpk" else str(self.device)
+
+    @property
+    def applied_imx500_roi(self) -> Imx500RoiBox | str:
+        if self.model_format != "rpk":
+            return "not-used"
+        if self.source.applied_imx500_roi_abs is not None:
+            return self.source.applied_imx500_roi_abs
+        if self.output_roi_for_inference == "full-frame" and self.imx500_roi_mode == "match-output-roi":
+            return "full-frame"
+        return self.imx500_roi_mode
 
     def _load_pytorch_model(self):
         if not self.model_path.exists():
@@ -404,19 +526,12 @@ class SmartRoastAIDetector:
         self.close()
 
     def select_roi(self, image: Image.Image) -> tuple[Image.Image, RoiBox | str]:
-        if self.roi is not None:
-            validate_crop_box(self.roi, image.width, image.height)
-            return image.crop(self.roi), self.roi
-
-        if self.roi_mode == "training-center":
-            box = centered_training_crop_box(image.width, image.height)
-            validate_crop_box(box, image.width, image.height)
-            return image.crop(box), box
-
-        if self.roi_mode == "full-frame":
+        box = resolve_output_roi(image.width, image.height, self.roi, self.roi_mode)
+        if box == "full-frame":
             return image, "full-frame"
-
-        raise ValueError(f"Unsupported roi_mode: {self.roi_mode}")
+        if not isinstance(box, tuple):
+            raise ValueError(f"Unsupported output ROI: {box}")
+        return image.crop(box), box
 
     def image_to_tensor(self, image: Image.Image):
         if self._torch is None:
@@ -532,6 +647,7 @@ class SmartRoastAIDetector:
             mean_grayscale=gray_mean,
             inference_ms=inference_ms,
             roi=roi_box,
+            imx500_roi=self.applied_imx500_roi,
             frame_size=(captured.image.width, captured.image.height),
             roi_size=(roi_image.width, roi_image.height),
             model_format=self.model_format,
@@ -546,5 +662,5 @@ class SmartRoastAIDetector:
         return (
             f"[{index}] {result.timestamp} format={result.model_format} "
             f"prediction={result.prediction} gray={result.mean_grayscale:.2f} "
-            f"inference={result.inference_ms:.1f}ms {probability_text}"
+            f"inference={result.inference_ms:.1f}ms imx500_roi={result.imx500_roi} {probability_text}"
         )

@@ -39,6 +39,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--count", type=int, default=3)
     parser.add_argument("--roi", nargs=4, type=int, metavar=("X1", "Y1", "X2", "Y2"))
     parser.add_argument("--roi-mode", choices=["training-center", "full-frame"], default="training-center")
+    parser.add_argument(
+        "--imx500-roi-mode",
+        choices=["match-output-roi", "manual", "auto-aspect"],
+        default="match-output-roi",
+    )
+    parser.add_argument(
+        "--imx500-roi-abs",
+        nargs=4,
+        type=int,
+        metavar=("X", "Y", "W", "H"),
+        help="Manual IMX500 inference ROI in full sensor coordinates.",
+    )
     parser.add_argument("--save-crops", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=TEST_OUTPUT_DIR / "detector_loop")
     return parser.parse_args()
@@ -47,6 +59,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     roi = tuple(args.roi) if args.roi else None
+    imx500_roi_abs = tuple(args.imx500_roi_abs) if args.imx500_roi_abs else None
 
     try:
         detector = SmartRoastAIDetector(
@@ -62,6 +75,8 @@ def main() -> int:
             roi_mode=args.roi_mode,
             output_dir=args.output_dir,
             class_names=args.class_names,
+            imx500_roi_abs=imx500_roi_abs,
+            imx500_roi_mode=args.imx500_roi_mode,
         )
     except (RuntimeError, FileNotFoundError, ValueError) as exc:
         print(exc)
@@ -72,6 +87,8 @@ def main() -> int:
     print(f"Inference: {detector.device_label}")
     print(f"Model format: {detector.model_format}")
     print(f"Model is loaded once from: {args.model}")
+    print(f"Output ROI: {detector.output_roi_for_inference}")
+    print(f"IMX500 ROI mode: {args.imx500_roi_mode}")
     print(f"Interval: {args.interval:.1f}s")
     print(f"Count: {'until Ctrl+C' if args.count == 0 else args.count}")
 

@@ -8,6 +8,7 @@ const {
   liveData,
   roastDataPoints,
   roastPlan,
+  hasStartedRealRoast,
   setRoastPlanFromProfile,
   roastProfiles,
   profilesLoaded,
@@ -66,18 +67,21 @@ const stateDisplay = computed(() => {
 const isIdle = computed(() => liveData.value.state === 'IDLE')
 
 watch(selectedProfile, (profile) => {
-  if (isIdle.value) setRoastPlanFromProfile(profile)
+  if (isIdle.value && hasStartedRealRoast.value) {
+    setRoastPlanFromProfile(profile)
+  }
 }, { immediate: true })
+
 const isRoasting = computed(() => ['PREHEAT', 'ROASTING'].includes(liveData.value.state))
 
 const chartTargetTemp = computed(() => {
   if (liveData.value.targetTemp > 0) return liveData.value.targetTemp
   return roastPlan.value?.target ?? 0
 })
+
 const isCooling = computed(() => liveData.value.state === 'COOLING')
 const canResume = computed(() => isCooling.value && liveData.value.canResume)
 
-// Theme color map — keeps the template clean
 const c = computed(() => isDark.value ? {
   page:       'coffee-dark-bg',
   header:     'border-b border-white/[0.04]',
@@ -95,9 +99,6 @@ const c = computed(() => isDark.value ? {
   iconClr:    'text-gold-400',
   track:      'bg-zinc-800/80',
   chartArea:  'bg-[#141210] border border-white/[0.04]',
-  chartBox:   'bg-white/[0.03] border border-white/[0.04]',
-  chartTxt:   'text-zinc-500',
-  chartDim:   'text-zinc-700',
   profSel:    'border-gold-500/50 bg-gold-400/8 ring-1 ring-gold-400/15',
   profDef:    'border-white/[0.05] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/[0.08]',
   profLbl:    'text-zinc-600',
@@ -105,7 +106,6 @@ const c = computed(() => isDark.value ? {
   profNDef:   'text-zinc-400',
   profTSel:   'text-gold-400',
   profTDef:   'text-zinc-600',
-  profDesc:   'text-zinc-600',
   stopBtn:    'bg-gold-600 hover:bg-gold-500 shadow-lg shadow-gold-900/30',
   estopExtra: 'shadow-[0_0_30px_rgba(239,68,68,0.15)] hover:shadow-[0_0_40px_rgba(239,68,68,0.25)] border border-red-500/30',
   estopSub:   'text-zinc-600',
@@ -131,9 +131,6 @@ const c = computed(() => isDark.value ? {
   iconClr:    'text-amber-600',
   track:      'bg-stone-200',
   chartArea:  'bg-[#faf6f1] border border-dashed border-stone-200/80',
-  chartBox:   'bg-stone-200/50',
-  chartTxt:   'text-stone-400',
-  chartDim:   'text-stone-300',
   profSel:    'border-amber-500 bg-amber-50/80 ring-1 ring-amber-400/30',
   profDef:    'border-stone-200/80 bg-white hover:border-stone-300 hover:bg-stone-50/50',
   profLbl:    'text-stone-400',
@@ -141,7 +138,6 @@ const c = computed(() => isDark.value ? {
   profNDef:   'text-stone-700',
   profTSel:   'text-amber-600',
   profTDef:   'text-stone-400',
-  profDesc:   'text-stone-400',
   stopBtn:    'bg-amber-600 hover:bg-amber-700 shadow-lg shadow-amber-900/20',
   estopExtra: 'shadow-xl shadow-red-500/20 border-2 border-red-700',
   estopSub:   'text-stone-400',
@@ -155,11 +151,8 @@ const c = computed(() => isDark.value ? {
 
 <template>
   <div :class="c.page" class="min-h-screen w-full max-w-full overflow-x-clip transition-colors duration-500">
-
-    <!-- Amber accent line -->
     <div class="h-[3px] bg-gradient-to-r from-gold-700 via-gold-400 to-gold-700" />
 
-    <!-- ============================== HEADER ============================== -->
     <header :class="c.header" class="transition-colors duration-500">
       <div class="max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 py-5 flex items-center justify-between gap-3 min-w-0">
         <div class="flex items-center gap-3 sm:gap-4 min-w-0 shrink">
@@ -182,11 +175,11 @@ const c = computed(() => isDark.value ? {
           >
             HW Test
           </NuxtLink>
+
           <button
             :class="c.toggleBg"
             class="w-9 h-9 rounded-xl flex items-center justify-center transition-colors"
             @click="isDark = !isDark"
-            :title="isDark ? 'Switch to light' : 'Switch to dark'"
           >
             <Icon :name="isDark ? 'lucide:sun' : 'lucide:moon'" class="w-4 h-4" />
           </button>
@@ -207,7 +200,6 @@ const c = computed(() => isDark.value ? {
       </div>
     </header>
 
-    <!-- ============================== MAIN — SIDEBAR LAYOUT ============================== -->
     <main class="relative max-w-[1440px] mx-auto px-5 sm:px-8 lg:px-10 py-8 overflow-x-clip">
       <p
         v-if="lastError"
@@ -216,7 +208,13 @@ const c = computed(() => isDark.value ? {
         {{ lastError }}
       </p>
 
-      <!-- Ambient glow (dark only) — clipped to main width -->
+      <p
+        v-if="liveData.rawState === 'PREHEAT_READY_ADD_BEANS' || liveData.rawState === 'BEAN_DROP_DETECTED_WAITING_FOR_BOTTOM'"
+        class="relative mb-5 text-sm font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-3"
+      >
+        Add beans now — roast will start automatically when the temperature bottoms out and starts rising.
+      </p>
+
       <div
         v-if="isDark"
         class="pointer-events-none absolute inset-x-0 top-0 h-[400px] overflow-hidden"
@@ -226,11 +224,7 @@ const c = computed(() => isDark.value ? {
       </div>
 
       <div class="relative xl:grid xl:grid-cols-[minmax(0,320px)_minmax(0,1fr)] xl:gap-7 space-y-6 xl:space-y-0 min-w-0">
-
-        <!-- ==================== LEFT SIDEBAR ==================== -->
         <aside class="xl:sticky xl:top-8 xl:self-start space-y-4 min-w-0">
-
-          <!-- Hero Temperature Card -->
           <div class="card-base" :class="c.card">
             <div class="glow-line" :class="c.glowVia" />
             <div class="flex items-center justify-between mb-2">
@@ -243,6 +237,7 @@ const c = computed(() => isDark.value ? {
             <p class="text-[2.75rem] sm:text-[3.25rem] leading-none font-extrabold tracking-tighter tabular-nums" :class="c.value">
               {{ liveData.temp != null ? liveData.temp.toFixed(1) : '—' }}<span class="text-lg font-semibold ml-1" :class="c.unit">°C</span>
             </p>
+
             <p
               v-if="liveData.sensorFault"
               class="mt-2 text-xs font-medium text-amber-400/90 leading-snug"
@@ -250,7 +245,6 @@ const c = computed(() => isDark.value ? {
               Thermocouple: {{ liveData.sensorFault }}
             </p>
 
-            <!-- Integrated progress gauge -->
             <div class="mt-5">
               <div class="relative h-2.5 rounded-full overflow-hidden" :class="c.track">
                 <div class="absolute inset-0 rounded-full bg-gradient-to-r from-emerald-500 via-gold-400 via-[60%] to-red-500 opacity-90" />
@@ -268,13 +262,8 @@ const c = computed(() => isDark.value ? {
             </div>
           </div>
 
-          <!-- Mini Stats Row -->
           <div class="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
-            <!-- Target -->
-            <div
-              class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0"
-              :class="c.card"
-            >
+            <div class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0" :class="c.card">
               <span class="lbl text-[8px] shrink-0" :class="c.label">
                 {{ isRoasting ? 'Setpoint' : 'Target' }}
               </span>
@@ -290,11 +279,7 @@ const c = computed(() => isDark.value ? {
               </div>
             </div>
 
-            <!-- Heater -->
-            <div
-              class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0"
-              :class="c.card"
-            >
+            <div class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0" :class="c.card">
               <span class="lbl text-[8px] shrink-0" :class="c.label">Heater</span>
               <div class="mt-1.5 flex flex-col items-center leading-none min-w-0 w-full">
                 <span class="text-lg sm:text-xl font-extrabold tabular-nums" :class="c.value">
@@ -304,11 +289,7 @@ const c = computed(() => isDark.value ? {
               </div>
             </div>
 
-            <!-- State -->
-            <div
-              class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0 w-full"
-              :class="c.card"
-            >
+            <div class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0 w-full" :class="c.card">
               <span class="lbl text-[8px] shrink-0" :class="c.label">State</span>
               <span
                 class="mt-1.5 inline-flex w-full max-w-full items-center justify-center gap-1 px-1.5 py-1 rounded-full text-[8px] sm:text-[9px] font-bold leading-tight"
@@ -323,7 +304,6 @@ const c = computed(() => isDark.value ? {
             </div>
           </div>
 
-          <!-- Sidebar Controls (visible on xl only, hidden on mobile where it appears below chart) -->
           <div class="hidden xl:block card-base" :class="c.card">
             <div class="glow-line" :class="c.glowVia" />
             <div class="flex items-center gap-3 mb-5">
@@ -333,7 +313,6 @@ const c = computed(() => isDark.value ? {
               <h3 class="text-xs font-bold uppercase tracking-widest" :class="c.secTitle">Controls</h3>
             </div>
 
-            <!-- Profile Selector -->
             <div class="mb-5">
               <label class="text-[9px] font-bold uppercase tracking-[0.15em] mb-2 block" :class="c.profLbl">
                 Roast Profile
@@ -350,20 +329,17 @@ const c = computed(() => isDark.value ? {
                 >
                   <div class="flex items-center gap-1.5 mb-0.5">
                     <span class="w-2 h-2 rounded-full shrink-0" :class="profile.dot" />
-                    <span
-                      class="text-[11px] font-bold truncate"
-                      :class="selectedProfile?.id === profile.id ? c.profNSel : c.profNDef"
-                    >{{ profile.name }}</span>
+                    <span class="text-[11px] font-bold truncate" :class="selectedProfile?.id === profile.id ? c.profNSel : c.profNDef">
+                      {{ profile.name }}
+                    </span>
                   </div>
-                  <span
-                    class="text-[10px] font-bold tabular-nums"
-                    :class="selectedProfile?.id === profile.id ? c.profTSel : c.profTDef"
-                  >{{ profile.temp }}°C · σ {{ profile.rampMid }}m</span>
+                  <span class="text-[10px] font-bold tabular-nums" :class="selectedProfile?.id === profile.id ? c.profTSel : c.profTDef">
+                    {{ profile.temp }}°C · σ {{ profile.rampMid }}m
+                  </span>
                 </button>
               </div>
             </div>
 
-            <!-- Buttons -->
             <div class="space-y-2">
               <button
                 v-if="isIdle"
@@ -374,13 +350,13 @@ const c = computed(() => isDark.value ? {
                     ? 'bg-sky-700 hover:bg-sky-600 ring-2 ring-sky-400/40'
                     : 'bg-sky-600 hover:bg-sky-500 shadow-sky-900/30',
                 ]"
-                class="ctrl-btn text-white shadow-lg disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none
-                       focus-visible:ring-sky-500"
+                class="ctrl-btn text-white shadow-lg disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none focus-visible:ring-sky-500"
                 @click="toggleTestSpin()"
               >
                 <Icon name="lucide:wind" class="w-4 h-4" />
                 {{ liveData.testSpin ? 'Stop test spin' : 'Test spin' }}
               </button>
+
               <p v-if="isIdle" class="text-[9px] text-center -mt-1" :class="c.profLbl">
                 Fan ramps on — check beans are tumbling before you roast
               </p>
@@ -389,22 +365,18 @@ const c = computed(() => isDark.value ? {
                 v-if="!isCooling"
                 :disabled="!isIdle || !isConnected || !selectedProfile"
                 :class="c.ringOff"
-                class="ctrl-btn bg-emerald-600 hover:bg-emerald-500
-                       focus-visible:ring-emerald-500 text-white shadow-lg shadow-emerald-900/30
-                       disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
+                class="ctrl-btn bg-emerald-600 hover:bg-emerald-500 focus-visible:ring-emerald-500 text-white shadow-lg shadow-emerald-900/30 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
                 @click="startRoast(selectedProfile.id)"
               >
                 <Icon name="lucide:play" class="w-4 h-4" />
-                Start Roast
+                Preheat Roaster
               </button>
 
               <button
                 v-if="isRoasting"
                 :disabled="!isConnected"
                 :class="[c.stopBtn, c.ringOff]"
-                class="ctrl-btn text-white
-                       disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none
-                       focus-visible:ring-amber-500"
+                class="ctrl-btn text-white disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none focus-visible:ring-amber-500"
                 @click="stopRoast()"
               >
                 <Icon name="lucide:square" class="w-4 h-4" />
@@ -415,8 +387,7 @@ const c = computed(() => isDark.value ? {
                 <button
                   :disabled="!isConnected"
                   :class="c.ringOff"
-                  class="ctrl-btn bg-sky-600 hover:bg-sky-500 text-white
-                         focus-visible:ring-sky-500 disabled:opacity-30"
+                  class="ctrl-btn bg-sky-600 hover:bg-sky-500 text-white focus-visible:ring-sky-500 disabled:opacity-30"
                   @click="resumeRoast()"
                 >
                   <Icon name="lucide:play" class="w-4 h-4" />
@@ -425,26 +396,19 @@ const c = computed(() => isDark.value ? {
                 <button
                   :disabled="!isConnected"
                   :class="c.ringOff"
-                  class="ctrl-btn bg-amber-700 hover:bg-amber-600 text-white
-                         focus-visible:ring-amber-500 disabled:opacity-30"
+                  class="ctrl-btn bg-amber-700 hover:bg-amber-600 text-white focus-visible:ring-amber-500 disabled:opacity-30"
                   @click="finishRoast()"
                 >
                   <Icon name="lucide:save" class="w-4 h-4" />
                   Finish now
                 </button>
-                <p class="text-[9px] text-center" :class="c.profLbl">
-                  Finish now saves the log; fan stays on until cool-down completes
-                </p>
               </template>
             </div>
 
             <div class="mt-4 pt-4 space-y-3" :class="'border-t ' + c.divider">
               <button
                 :class="c.estopExtra"
-                class="w-full py-3.5 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98]
-                       text-white font-black text-xs uppercase tracking-[0.2em]
-                       transition-all duration-200 flex items-center justify-center gap-2
-                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                class="w-full py-3.5 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white font-black text-xs uppercase tracking-[0.2em] transition-all duration-200 flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                 @click="emergencyStop()"
               >
                 <Icon name="lucide:shield-alert" class="w-5 h-5" />
@@ -457,10 +421,7 @@ const c = computed(() => isDark.value ? {
           </div>
         </aside>
 
-        <!-- ==================== RIGHT MAIN CONTENT ==================== -->
         <div class="space-y-5 min-w-0">
-
-          <!-- Chart -->
           <div class="card-base" :class="c.card">
             <div class="glow-line" :class="c.glowVia" />
             <div class="flex items-center gap-3 mb-5">
@@ -485,10 +446,7 @@ const c = computed(() => isDark.value ? {
                   :dark="isDark"
                 />
                 <template #fallback>
-                  <div
-                    class="flex items-center justify-center text-xs text-zinc-500"
-                    style="min-height: 440px"
-                  >
+                  <div class="flex items-center justify-center text-xs text-zinc-500" style="min-height: 440px">
                     Loading chart…
                   </div>
                 </template>
@@ -496,12 +454,10 @@ const c = computed(() => isDark.value ? {
             </div>
           </div>
 
-          <!-- Horizontal Controls Bar (mobile/tablet only — hidden on xl where sidebar has controls) -->
           <div class="xl:hidden card-base" :class="c.card">
             <div class="glow-line" :class="c.glowVia" />
 
             <div class="sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,auto)] sm:gap-6 min-w-0">
-              <!-- Profile Selector -->
               <div>
                 <label class="text-[9px] font-bold uppercase tracking-[0.15em] mb-2.5 block" :class="c.profLbl">
                   Roast Profile
@@ -518,20 +474,17 @@ const c = computed(() => isDark.value ? {
                   >
                     <div class="flex items-center gap-1.5 mb-0.5">
                       <span class="w-2 h-2 rounded-full shrink-0" :class="profile.dot" />
-                      <span
-                        class="text-[11px] font-bold truncate"
-                        :class="selectedProfile?.id === profile.id ? c.profNSel : c.profNDef"
-                      >{{ profile.name }}</span>
+                      <span class="text-[11px] font-bold truncate" :class="selectedProfile?.id === profile.id ? c.profNSel : c.profNDef">
+                        {{ profile.name }}
+                      </span>
                     </div>
-                    <span
-                      class="text-[10px] font-bold tabular-nums"
-                      :class="selectedProfile?.id === profile.id ? c.profTSel : c.profTDef"
-                    >{{ profile.temp }}°C · σ {{ profile.rampMid }}m</span>
+                    <span class="text-[10px] font-bold tabular-nums" :class="selectedProfile?.id === profile.id ? c.profTSel : c.profTDef">
+                      {{ profile.temp }}°C · σ {{ profile.rampMid }}m
+                    </span>
                   </button>
                 </div>
               </div>
 
-              <!-- Buttons stack -->
               <div class="flex flex-col gap-2 min-w-0 sm:w-auto">
                 <button
                   v-if="isIdle"
@@ -542,13 +495,13 @@ const c = computed(() => isDark.value ? {
                       ? 'bg-sky-700 hover:bg-sky-600 ring-2 ring-sky-400/40'
                       : 'bg-sky-600 hover:bg-sky-500 shadow-sky-900/30',
                   ]"
-                  class="ctrl-btn text-white shadow-lg disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none
-                         focus-visible:ring-sky-500"
+                  class="ctrl-btn text-white shadow-lg disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none focus-visible:ring-sky-500"
                   @click="toggleTestSpin()"
                 >
                   <Icon name="lucide:wind" class="w-4 h-4" />
                   {{ liveData.testSpin ? 'Stop test spin' : 'Test spin' }}
                 </button>
+
                 <p v-if="isIdle" class="text-[9px] text-center sm:hidden" :class="c.profLbl">
                   Fan ramps on — check bean tumble before roasting
                 </p>
@@ -557,22 +510,18 @@ const c = computed(() => isDark.value ? {
                   v-if="!isCooling"
                   :disabled="!isIdle || !isConnected || !selectedProfile"
                   :class="c.ringOff"
-                  class="ctrl-btn bg-emerald-600 hover:bg-emerald-500
-                         focus-visible:ring-emerald-500 text-white shadow-lg shadow-emerald-900/30
-                         disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
+                  class="ctrl-btn bg-emerald-600 hover:bg-emerald-500 focus-visible:ring-emerald-500 text-white shadow-lg shadow-emerald-900/30 disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none"
                   @click="startRoast(selectedProfile.id)"
                 >
                   <Icon name="lucide:play" class="w-4 h-4" />
-                  Start Roast
+                  Preheat Roaster
                 </button>
 
                 <button
                   v-if="isRoasting"
                   :disabled="!isConnected"
                   :class="[c.stopBtn, c.ringOff]"
-                  class="ctrl-btn text-white
-                         disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none
-                         focus-visible:ring-amber-500"
+                  class="ctrl-btn text-white disabled:opacity-30 disabled:cursor-not-allowed disabled:shadow-none focus-visible:ring-amber-500"
                   @click="stopRoast()"
                 >
                   <Icon name="lucide:square" class="w-4 h-4" />
@@ -605,10 +554,7 @@ const c = computed(() => isDark.value ? {
             <div class="mt-5 pt-4 space-y-3" :class="'border-t ' + c.divider">
               <button
                 :class="c.estopExtra"
-                class="w-full py-4 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98]
-                       text-white font-black text-sm uppercase tracking-[0.2em]
-                       transition-all duration-200 flex items-center justify-center gap-2.5
-                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                class="w-full py-4 rounded-2xl bg-red-600 hover:bg-red-500 active:scale-[0.98] text-white font-black text-sm uppercase tracking-[0.2em] transition-all duration-200 flex items-center justify-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                 @click="emergencyStop()"
               >
                 <Icon name="lucide:shield-alert" class="w-5 h-5" />

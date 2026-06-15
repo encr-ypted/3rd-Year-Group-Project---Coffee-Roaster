@@ -14,10 +14,10 @@ MAX_SAFE_TEMP_C = 250.0
 LOG_FOLDER = "logs"
 COMMAND_FILE = "roaster_command.txt"
 
-HEATER_GPIO = 18
+HEATER_GPIO = 23
 CONTROL_WINDOW_S = 1.0
 
-IN1 = 23
+IN1 = 25
 IN2 = 24
 ENA = 12
 
@@ -29,15 +29,15 @@ FAN_RAMP_STEPS = 10
 fan_ramp_done = False
 
 AMBIENT_C = 25.0
-MODEL_A = 0.9555
-MODEL_B = 0.1173
+MODEL_A = 0.9978
+MODEL_B = 0.0052
 
-PREDICTION_HORIZON = 30
+PREDICTION_HORIZON = 120
 DUTY_STEP = 1
 
-WEIGHT_TRACKING = 2.0
+WEIGHT_TRACKING = 6.0
 WEIGHT_HEATER_CHG_IN = 0.1
-WEIGHT_OVERSHOOT = 5.0
+WEIGHT_OVERSHOOT = 3.0
 
 previous_heater_output = 0.0
 
@@ -63,17 +63,29 @@ def fan_off():
 
 
 def fan_ramp_start():
+<<<<<<< Updated upstream
     print("ramping fan")
+=======
+    print("ramp fan before heater is started")
+>>>>>>> Stashed changes
 
     for i in range(FAN_RAMP_STEPS + 1):
         speed = MOTOR_OFF_SPEED - ((MOTOR_OFF_SPEED - MOTOR_ON_SPEED) * (i / FAN_RAMP_STEPS))
         enable.value = speed
         motor.forward()
+<<<<<<< Updated upstream
         print(f"Fan speed: {speed:.2f}")
         time.sleep(FAN_RAMP_TIME_S / FAN_RAMP_STEPS)
 
     enable.value = MOTOR_ON_SPEED
     print("Fan ramp complete")
+=======
+        print(f"Fan ramp spd: {speed:.2f}")
+        time.sleep(FAN_RAMP_TIME_S / FAN_RAMP_STEPS)
+
+    enable.value = MOTOR_ON_SPEED
+    print("Fan ramp complete so heater is now allowed")
+>>>>>>> Stashed changes
 
 
 def read_command():
@@ -97,15 +109,20 @@ def calculate_mpc(temp_c):
         for _ in range(PREDICTION_HORIZON):
             predicted_temp = (
                 AMBIENT_C
-                + MODEL_A * (predicted_temp - AMBIENT_C)
-                + MODEL_B * duty
+                + MODEL_A * (predicted_temp - AMBIENT_C) 
+                + MODEL_B * duty    
             )
 
             error = TARGET_C - predicted_temp
             cost += WEIGHT_TRACKING * (error ** 2)
 
+<<<<<<< Updated upstream
             if predicted_temp > TARGET_C + 10:
                 cost += WEIGHT_OVERSHOOT * ((predicted_temp - TARGET_C) ** 2)
+=======
+            if predicted_temp > target_c + 3:
+                cost += WEIGHT_OVERSHOOT * ((predicted_temp - target_c) ** 2)
+>>>>>>> Stashed changes
 
             if predicted_temp > MAX_SAFE_TEMP_C:
                 cost += 100000
@@ -136,9 +153,13 @@ with open(log_file, "w", newline="") as file:
     ])
 
 
+<<<<<<< Updated upstream
 print("Coffee roaster MPC + fan control started.")
 print("Dashboard controls: IDLE / RUN / STOP / E_STOP")
 print(f"Target temperature: {TARGET_C} °C")
+=======
+print(f"Default target temperature: {TARGET_C} °C")
+>>>>>>> Stashed changes
 print(f"Logging to: {log_file}")
 
 
@@ -225,7 +246,7 @@ try:
         except Exception as e:
             heater_output = previous_heater_output
 
-            print(f"Sensor error: {e} | keeping same duty: {heater_output:.1f}%")
+            print(f"Sensor error: {e} so keeping same duty: {heater_output:.1f}%")
 
             state = "SENSOR_ERROR_KEEPING_DUTY"
 

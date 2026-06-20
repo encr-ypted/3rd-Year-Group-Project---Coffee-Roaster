@@ -28,9 +28,6 @@ const liveData = ref({
     rampSteepness: 0,
     heaterPwm: 0,
     fanPwm: 0,
-    grayscale: null,
-    grayscaleDoneThreshold: 115.0,
-    roastDone: false,
     state: 'IDLE',
     rawState: 'IDLE',
     heaterHalted: false,
@@ -144,15 +141,6 @@ export const useCoffeeRoaster = () => {
                             message.ramp_steepness ?? liveData.value.rampSteepness,
                         heaterPwm: message.heater_pwm,
                         fanPwm: message.fan_pwm,
-                        grayscale:
-                            message.grayscale !== undefined
-                                ? message.grayscale
-                                : liveData.value.grayscale,
-                        grayscaleDoneThreshold:
-                            message.grayscale_done_threshold !== undefined
-                                ? message.grayscale_done_threshold
-                                : liveData.value.grayscaleDoneThreshold,
-                        roastDone: message.roast_done ?? false,
                         state: message.state,
                         rawState: message.raw_state ?? message.state,
                         heaterHalted: message.heater_halted ?? liveData.value.heaterHalted,
@@ -251,9 +239,6 @@ export const useCoffeeRoaster = () => {
         roastStartTemp.value = null;
         hasStartedRealRoast.value = false;
         roastPlan.value = null;
-        liveData.value.grayscale = null;
-        liveData.value.grayscaleDoneThreshold = 115.0;
-        liveData.value.roastDone = false;
         sendJson({ action: 'START_ROAST', profile_id: profileId });
     };
 
@@ -264,7 +249,6 @@ export const useCoffeeRoaster = () => {
 
     const resumeRoast = () => {
         if (!isConnected.value) return;
-        liveData.value.roastDone = false;
         sendJson({ action: 'RESUME_ROAST' });
     };
 

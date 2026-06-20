@@ -59,7 +59,6 @@ const stateDisplay = computed(() => {
     PREHEAT:  { label: 'Preheating',  dot: 'bg-amber-500',   pill: d ? 'bg-amber-500/10 text-amber-400'  : 'bg-amber-50 text-amber-700',   pulse: true },
     ROASTING: { label: 'Roasting',    dot: 'bg-orange-500',  pill: d ? 'bg-orange-500/10 text-orange-400' : 'bg-orange-50 text-orange-700', pulse: true },
     COOLING:  { label: 'Cooling',     dot: 'bg-sky-500',     pill: d ? 'bg-sky-500/10 text-sky-400'      : 'bg-sky-50 text-sky-700',       pulse: true },
-    DONE:     { label: 'Roast done',  dot: 'bg-emerald-500', pill: d ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-700' },
     ERROR:    { label: 'Error',       dot: 'bg-red-500',     pill: d ? 'bg-red-500/10 text-red-400'      : 'bg-red-50 text-red-700',       pulse: true },
   }
   return states[liveData.value.state] || states.IDLE
@@ -216,13 +215,6 @@ const c = computed(() => isDark.value ? {
         Add beans now — roast will start automatically when the temperature bottoms out and starts rising.
       </p>
 
-      <p
-        v-if="liveData.roastDone"
-        class="relative mb-5 text-sm font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3"
-      >
-        Roast looks done — grayscale stayed below {{ liveData.grayscaleDoneThreshold.toFixed(0) }} for 5 seconds.
-      </p>
-
       <div
         v-if="isDark"
         class="pointer-events-none absolute inset-x-0 top-0 h-[400px] overflow-hidden"
@@ -270,7 +262,7 @@ const c = computed(() => isDark.value ? {
             </div>
           </div>
 
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 min-w-0">
+          <div class="grid grid-cols-3 gap-2 sm:gap-3 min-w-0">
             <div class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0" :class="c.card">
               <span class="lbl text-[8px] shrink-0" :class="c.label">
                 {{ isRoasting ? 'Setpoint' : 'Target' }}
@@ -294,16 +286,6 @@ const c = computed(() => isDark.value ? {
                   {{ liveData.heaterPwm }}
                 </span>
                 <span class="text-[9px] font-semibold mt-0.5" :class="c.unit">%</span>
-              </div>
-            </div>
-
-            <div class="card-base !p-3 sm:!p-4 flex flex-col items-center justify-center text-center min-h-[5.25rem] min-w-0" :class="c.card">
-              <span class="lbl text-[8px] shrink-0" :class="c.label">Grayscale</span>
-              <div class="mt-1.5 flex flex-col items-center leading-none min-w-0 w-full">
-                <span class="text-lg sm:text-xl font-extrabold tabular-nums" :class="c.value">
-                  {{ liveData.grayscale != null ? liveData.grayscale.toFixed(0) : '—' }}
-                </span>
-                <span class="text-[9px] font-semibold mt-0.5" :class="c.unit">done &lt; {{ liveData.grayscaleDoneThreshold.toFixed(0) }}</span>
               </div>
             </div>
 

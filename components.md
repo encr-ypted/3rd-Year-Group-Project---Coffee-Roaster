@@ -1,0 +1,22 @@
+## Components Used
+- Popcorn popper
+- Solid State Relay (SSR)
+- K-type thermocouple
+- MAX31855 thermocouple interface
+- AC to DC converters
+- WAGO connectors
+- DPST switch
+- Cabling and cable glands
+- Enclosures
+- Motor
+- Heatsink
+- Spade crimp connectors
+- 3mm acrylic
+- MOSFETs (IRF530N)
+- Diodes (IN5408)
+- BJTs (2N3904)
+- Zener diodes
+- Terminal block
+- Raspberyy Pi screen
+- 32GB SD card
+- Birch plywood

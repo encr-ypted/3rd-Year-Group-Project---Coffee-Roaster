@@ -20,13 +20,13 @@ The system is based on a modified fluidised bed coffee roaster using a hot-air p
 
 ---
 
-## Current System Features
+## Final System Features
 
 ### Sensing
 
 * Bean temperature sensing
-* Air temperature sensing
 * Real-time temperature monitoring
+* Temperature profile tracking
 
 ### Control
 
@@ -45,26 +45,35 @@ The system is based on a modified fluidised bed coffee roaster using a hot-air p
 * Stop & Cool functionality
 * Emergency Stop functionality
 
-### AI / Future Development
+### Camera Monitoring and Data Processing
 
 * Roast data logging
-* Camera-based bean colour monitoring
+* Raspberry Pi camera integration
+* Real-time bean colour monitoring using grayscale analysis
+
+### Future Development
+
 * AI-assisted roast optimisation
 * Roast profile recommendations
+* Computer vision techniques for roast classification
 
 ---
 
-## Technologies Used
+## Hardware Overview
+
+The final prototype consisted of:
 
 * Raspberry Pi 4
-* Embedded systems
-* Temperature sensing
-* Solid State Relay (SSR) control
-* Control systems (PID and MPC)
-* Python
-* Web-based user interfaces
-* Data logging
-* Power electronics
+* Modified hot-air popcorn popper
+* K-type thermocouple
+* MAX31855 thermocouple interface
+* Solid State Relay (SSR)
+* Custom PETG 3D-printed fan
+* Heater assembly
+* Cooling fan system
+* Raspberry Pi camera
+* Raspberry Pi display
+* Protective enclosures and cable management hardware
 
 ---
 
@@ -91,21 +100,13 @@ This project aims to improve sustainability in coffee roasting by:
 
 ---
 
-## Current Project Status
+## Project Outcome
 
-The project has successfully achieved a working prototype capable of:
+The project successfully delivered a fully functional smart coffee roaster capable of automated temperature-controlled roasting, cooling, and camera-assisted roast monitoring.
 
-* Roasting coffee beans
-* Monitoring roast temperature in real time
-* Controlling heater output
-* Controlling airflow
-* Executing roast profiles
-* Performing controlled cooling
-* Providing user interaction through a graphical interface
+Multiple successful roasting trials were completed throughout the development of this project.
 
-Multiple successful roast tests have been completed.
-
-Current development is focused on enclosure improvements, display integration, and future AI-assisted roasting features.
+The final system demonstrated the integration of embedded systems, control engineering, computer vision, and software development within a practical coffee roasting application.
 
 ---
 
@@ -121,11 +122,17 @@ A custom PETG 3D-printed fan was developed to improve airflow and bean circulati
 
 ### MPC Control
 
-Initial PID control testing revealed temperature overshoot. The project has since transitioned towards Model Predictive Control (MPC) to improve temperature regulation performance.
+Initial PID control testing revealed temperature overshoot. Therefore, the project transitioned from PID control to Model Predictive Control (MPC) after testing showed improved temperature regulation and reduced overshoot.
 
-### Dual Temperature Monitoring
+### Bean Temperature Monitoring
 
-Future development includes the use of separate bean and air temperature measurements to improve roast monitoring and control performance.
+The final system used bean temperature as the primary process variable for monitoring roast progress and controlling the roasting process.
+
+### Preheat Functionality
+
+The roasting process includes a preheating stage. The chamber is first heated before beans are added. The system detects the temperature drop caused by introducing the beans and then automatically transitions into the normal roasting process.
+
+This approach allows the roast profile to more closely resemble the thermal behaviour of larger commercial coffee roasters.
 
 ---
 
@@ -134,10 +141,6 @@ Future development includes the use of separate bean and air temperature measure
 * [Progress Update – 7th May 2026](blog/progress-update-7th-may.md)
 * [Progress Update – 21st May 2026](blog/progress-update-21st-may.md)
 * [Progress Update – 7th June 2026](blog/progress-update-7th-june.md)
-
-Future updates will be added here throughout the project lifecycle.
-
----
 
 ## Disclaimer
 

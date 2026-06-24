@@ -1,16 +1,14 @@
 import json
 import os
+import subprocess
+import sys
 import time
-
-from pi_ai_detector import SmartRoastAIDetector
 
 STATE_FILE = "grayscale_state.json"
 INTERVAL_S = 0.25
 
-NORMAL_RETRY_AFTER_ERROR_S = 5.0
-CAMERA_TIMEOUT_RETRY_AFTER_S = 20.0
-MAX_FAST_ERRORS_BEFORE_LONG_COOLDOWN = 3
-LONG_COOLDOWN_S = 60.0
+CAPTURE_TIMEOUT_S = 4.0
+RETRY_AFTER_TIMEOUT_S = 10.0
 
 
 def write_state(payload):
@@ -22,46 +20,52 @@ def write_state(payload):
     os.replace(tmp_file, STATE_FILE)
 
 
-def is_camera_timeout_error(exc):
-    text = repr(exc).lower()
+def run_one_capture():
+    code = r"""
+import json
+from pi_ai_detector import SmartRoastAIDetector
 
-    return (
-        "camera frontend has timed out" in text
-        or "camera sensor connector" in text
-        or "dequeue timer" in text
-        or "camera __init__ sequence did not complete" in text
-        or "failed to queue buffer" in text
-        or "invalid argument" in text
-        or "camera in running state" in text
+detector = SmartRoastAIDetector()
+detector.open()
+result = detector.infer_once(save_crop=False)
+gray = float(result.mean_grayscale)
+detector.close()
+
+print(json.dumps({"mean_grayscale": gray}))
+"""
+
+    return subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=CAPTURE_TIMEOUT_S,
     )
 
 
-def close_detector(detector):
-    if detector is None:
-        return None
-
-    try:
-        detector.close()
-    except Exception as exc:
-        print(f"Grayscale worker: detector close ignored: {repr(exc)}")
-
-    return None
-
-
 def main():
-    detector = None
-    error_count = 0
-
     while True:
         try:
-            if detector is None:
-                detector = SmartRoastAIDetector()
-                detector.open()
-                error_count = 0
-                print("Grayscale worker: detector ready")
+            result = run_one_capture()
 
-            result = detector.infer_once(save_crop=False)
-            gray = float(result.mean_grayscale)
+            if result.returncode != 0:
+                error_text = result.stderr.strip() or result.stdout.strip()
+
+                print(f"Grayscale worker subprocess failed: {error_text}")
+
+                write_state({
+                    "timestamp": time.time(),
+                    "mean_grayscale": None,
+                    "ok": False,
+                    "error": error_text,
+                })
+
+                time.sleep(RETRY_AFTER_TIMEOUT_S)
+                continue
+
+            lines = result.stdout.strip().splitlines()
+            json_line = lines[-1]
+            payload = json.loads(json_line)
+            gray = float(payload["mean_grayscale"])
 
             write_state({
                 "timestamp": time.time(),
@@ -73,41 +77,36 @@ def main():
             print(f"Grayscale worker: {gray:.2f}")
             time.sleep(INTERVAL_S)
 
-        except KeyboardInterrupt:
-            break
-
-        except Exception as exc:
-            error_count += 1
-            error_text = repr(exc)
-
-            print(f"Grayscale worker error: {error_text}")
+        except subprocess.TimeoutExpired:
+            print(
+                "Grayscale worker timeout: camera/libcamera hung. "
+                "Killing capture subprocess and retrying."
+            )
 
             write_state({
                 "timestamp": time.time(),
                 "mean_grayscale": None,
                 "ok": False,
-                "error": error_text,
+                "error": "camera/libcamera capture timeout",
             })
 
-            detector = close_detector(detector)
+            time.sleep(RETRY_AFTER_TIMEOUT_S)
 
-            if error_count >= MAX_FAST_ERRORS_BEFORE_LONG_COOLDOWN:
-                wait_s = LONG_COOLDOWN_S
-                error_count = 0
-                print(f"Grayscale worker: too many errors, cooling down for {wait_s}s")
+        except KeyboardInterrupt:
+            print("Grayscale worker stopped")
+            break
 
-            elif is_camera_timeout_error(exc):
-                wait_s = CAMERA_TIMEOUT_RETRY_AFTER_S
-                print(f"Grayscale worker: camera timeout/state error, retrying in {wait_s}s")
+        except Exception as exc:
+            print(f"Grayscale worker error: {repr(exc)}")
 
-            else:
-                wait_s = NORMAL_RETRY_AFTER_ERROR_S
-                print(f"Grayscale worker: retrying in {wait_s}s")
+            write_state({
+                "timestamp": time.time(),
+                "mean_grayscale": None,
+                "ok": False,
+                "error": repr(exc),
+            })
 
-            time.sleep(wait_s)
-
-    detector = close_detector(detector)
-    print("Grayscale worker stopped")
+            time.sleep(RETRY_AFTER_TIMEOUT_S)
 
 
 if __name__ == "__main__":

@@ -1,204 +1,161 @@
-# Smart Coffee Roaster — Backend
+# Smart Coffee Roaster Backend
 
-Python backend: **WebSocket API**, **GPIO hardware control**, **roast logging**, and **ML-ready CSV data**.
+This folder contains the Raspberry Pi backend for the Smart Coffee Roaster. It controls the roast process, communicates with the frontend, monitors bean brightness with the camera, and can drive the optional LCD display.
 
-## Overview
+## Files
 
-```
-Nuxt dashboard  →  ws://<pi>:8000/ws/telemetry
-                      ↓
-              api/main.py (FastAPI)
-                      ↓
-         hardware/controller.py (RoasterController)
-                      ↓
-    thermocouple · heater · motor · MPC/PID · roast_logger
-```
+### `MPC_Control.py`
 
-## Two APIs (do not run both on the Pi at once)
+The main roast-control script.
 
-| | Roast | Hardware bench |
-|--|-------|----------------|
-| **Run** | `python api/main.py` | `python api/hardware_test.py` |
-| **Port** | 8000 | 8001 |
-| **WebSocket** | `/ws/telemetry` | `/ws/bench` |
-| **Code** | `hardware/controller.py` | `hardware/hardware_test_bench.py` |
+It:
+- Reads temperature from the MAX31855 thermocouple.
+- Controls the heater and fan.
+- Handles preheating, bean-drop detection, and the normal roast phase.
+- Uses a model predictive control (MPC) loop to follow the selected roast profile's setpoint curve.
+- Writes roast telemetry to CSV files in `logs/`.
+- Reads grayscale data from `grayscale_state.json`.
+- Sends a roast-done notification flag when grayscale stays below the selected profile threshold for five seconds.
 
-Bench UI: frontend `/hardware-test` — fan, heater, PID/MPC tuning, E-stop.
+The grayscale notification does not automatically stop the roast, turn off the heater, or start cooling.
 
-## Quick start (Raspberry Pi)
+### `grayscale.py`
 
-Venv lives at **`CoffeeController/.venv`** (project root, sibling of `backend/`).
+A separate camera worker for the Raspberry Pi AI camera.
+
+It:
+- Starts the camera and AI detector.
+- Captures bean images.
+- Calculates the average bean brightness (`mean_grayscale`).
+- Writes the latest value to `grayscale_state.json`.
+
+It runs separately from `MPC_Control.py` so camera errors, timeouts, or crashes do not interrupt the main heating, fan, thermocouple, or MPC control logic.
+
+A grayscale value ranges from approximately 0 to 255:
+- Lower values mean darker beans.
+- Higher values mean lighter beans.
+
+### `webserver.py`
+
+The FastAPI/WebSocket backend used by the frontend.
+
+It:
+- Provides roast profiles at `/api/profiles`.
+- Sends live telemetry through `/ws/telemetry`.
+- Reads the newest CSV file in `logs/`.
+- Sends temperature, setpoint, heater output, fan output, grayscale, roast state, and roast-done notification status to the frontend.
+- Writes commands to `roaster_command.json`.
+
+### `st7796.py`
+
+Driver for the ST7796 SPI LCD display.
+
+It uses SPI1 so it does not conflict with the MAX31855 thermocouple on SPI0.
+
+### `requirements.txt`
+
+Python dependencies for the backend.
+
+## Roast Flow
+
+1. The empty roasting chamber is preheated.
+2. Once the preheat temperature is stable, beans are added.
+3. The added beans create a temperature drop.
+4. The controller detects the drop, turns the heater off, and waits for the lowest temperature.
+5. Once the temperature begins rising again, the actual roast starts.
+6. The controller resets roast time and follows the MPC setpoint curve toward the chosen profile target.
+
+## Grayscale Roast-Done Notification
+
+The camera worker measures the average brightness of the beans and writes it to `grayscale_state.json`.
+
+During the actual roast, `MPC_Control.py` compares that value against the selected profile threshold:
+
+| Roast profile | Notification threshold |
+|---|---:|
+| Light | Below 120 |
+| Medium | Below 115 |
+| Medium-Dark | Below 110 |
+| Dark | Below 105 |
+
+If the grayscale value remains below the selected threshold for five seconds, the backend sets `roast_done` to `true`. The frontend can then display a notification that the roast looks done.
+
+This is notification-only. The user still decides when to stop and cool the roast.
+
+## Running the Backend
+
+Open three terminals on the Raspberry Pi.
+
+### 1. Start the grayscale worker
 
 ```bash
-cd ~/Desktop/CoffeeController
-python3 -m venv .venv
-.venv/bin/pip install -r backend/requirements.txt
-cd backend
-../.venv/bin/python3 api/main.py   # roast API + LCD on the Pi (default)
+source venv/bin/activate
+python grayscale.py
 ```
 
-Dashboard: `ws://127.0.0.1:8000/ws/telemetry`
+This writes live camera data to:
 
-LCD is **on by default** when `HARDWARE_MODE=pi` in `config.py`. Disable with `ROASTER_LCD=0` or force on with `--lcd`.
+```text
+grayscale_state.json
+```
 
-### Boot on startup (Raspberry Pi)
-
-Full guide (install, update, uninstall): **`deploy/README.md`**.
+### 2. Start the roast controller
 
 ```bash
-cd backend
-chmod +x deploy/install-service.sh
-sudo ./deploy/install-service.sh
+source venv/bin/activate
+python MPC_Control.py
 ```
 
-Remove boot deployment: `sudo ./deploy/uninstall-service.sh` (see `deploy/README.md`).
+This controls the thermocouple, heater, fan, preheat sequence, bean-drop detection, MPC setpoint curve, and roast logging.
 
-Standalone LCD only: `python hardware/display/lcd.py`.
+### 3. Start the web server
 
-**Local UI without GPIO:** `python api/mock_ui_server.py` (stdlib only, port 8000).
+```bash
+source venv/bin/activate
+python webserver.py
+```
 
-## WebSocket — roast API
+The server runs on port `8000`.
 
-### Commands (client → server)
+## Generated Files
 
-| Action | JSON |
-|--------|------|
-| Start roast | `{"action":"START_ROAST","profile_id":"medium"}` |
-| Stop & cool | `{"action":"STOP_ROAST"}` |
-| Resume | `{"action":"RESUME_ROAST"}` |
-| Finish now | `{"action":"FINISH_ROAST"}` |
-| Emergency | `{"action":"E_STOP"}` |
-| State sync | `{"action":"GET_STATE"}` |
+### `roaster_command.json`
 
-### Telemetry (server → client, ~2 Hz)
+Written by `webserver.py` and read by `MPC_Control.py`.
+
+Example:
 
 ```json
 {
-  "type": "telemetry",
-  "timestamp": 42.5,
-  "temp": 187.3,
-  "target": 210.0,
-  "setpoint": 185.2,
-  "ramp_midpoint_min": 2.0,
-  "ramp_steepness": 1.0,
-  "heater_pwm": 65,
-  "fan_pwm": 100,
-  "state": "ROASTING",
-  "heater_halted": false,
-  "sensor_fault": null,
-  "can_resume": false,
-  "test_spin": false
+  "command": "PREHEAT",
+  "target_c": 210.0,
+  "profile_id": "medium"
 }
 ```
 
-RoR is still written to roast CSV logs for ML; it is not sent on the WebSocket (dashboard does not display it).
+### `grayscale_state.json`
 
-## State machine
+Written by `grayscale.py` and read by `MPC_Control.py`.
 
-| State | Meaning |
-|-------|---------|
-| `IDLE` | Off |
-| `PREHEAT` | Warming toward profile target |
-| `ROASTING` | At/above preheat threshold (150 °C) |
-| `COOLING` | User stopped; fan on until cool |
-| `ERROR` | Over-temp (>250 °C) |
+Example:
 
-- `START_ROAST` → `PREHEAT`
-- Temp ≥ **150 °C** → `ROASTING`
-- `STOP_ROAST` → `COOLING`
-- Temp ≤ **33 °C** in `COOLING` → `IDLE`
-- Temp > **250 °C** → `ERROR`
-
-## Control
-
-- **Heater:** time-proportional relay (`HEATER_CONTROL_WINDOW_S = 1.0` s). Duty from `MPCController` or `PIDController` — set `HEATER_CONTROLLER` in `config.py`.
-- **Setpoint ramp:** sigmoid from bean start temp to profile target (`hardware/control/roast_ramp.py`).
-- **Overshoot:** heater forced to 0% when temp > target + **15 °C**.
-- **Fan:** on during preheat/roast/cool; off at idle after cool-down.
-
-## Hardware modules
-
-| File | Role |
-|------|------|
-| `devices/thermocouple.py` | MAX31855, single probe, raw reading |
-| `devices/heater.py` | SSR relay, time-proportional `apply_output()` |
-| `devices/motor.py` | Fan PWM (GPIO 12) |
-| `control/heater_control.py` | Factory: MPC or PID |
-| `control/mpc.py` / `control/pid.py` | Heater duty 0–100% |
-| `control/roast_ramp.py` | Sigmoid setpoint curve |
-| `roast_logger.py` | CSV + JSON metadata |
-| `hardware_test_bench.py` | Bench-only GPIO test harness |
-| `display/st7796.py` / `display/lcd.py` | SPI driver + live WebSocket dashboard |
-
-## Configuration (`config.py`)
-
-| Setting | Value |
-|---------|-------|
-| `HEATER_GPIO` | 23 |
-| `THERMOCOUPLE_CS_GPIO` | 7 (SPI0 CE1) |
-| `FAN_PWM_GPIO` | 12 |
-| `COOL_DOWN_TEMP_C` | 33 |
-| `HEATER_CONTROLLER` | `"mpc"` or `"pid"` |
-| `BENCH_DEFAULT_CONTROLLER` | bench startup mode |
-
-Profiles: `GET /api/profiles` — same data as `ROAST_PROFILES` in config.
-
-## Data logging
-
-- `logs/roast_<id>.csv` — time series
-- `logs/roast_<id>_meta.json` — session metadata
-- `logs/roasts_index.csv` — index
-
-CSV includes `ror_c_per_min` for ML. Examples: `examples/roast_data_formats.json`.
-
-HTTP: `GET /api/roasts`, `GET /api/roasts/{roast_id}`.
-
-## Project layout
-
-```
-backend/
-├── config.py
-├── api/
-│   ├── main.py              # Roast API (8000)
-│   ├── hardware_test.py     # Bench API (8001)
-│   └── mock_ui_server.py    # Dev mock (no GPIO)
-├── hardware/
-│   ├── controller.py           # Roast orchestration
-│   ├── hardware_test_bench.py  # Bench GPIO harness
-│   ├── roast_logger.py
-│   ├── devices/                # thermocouple, heater, motor
-│   ├── control/                # pid, mpc, heater_control, roast_ramp
-│   └── display/                # st7796.py (driver), lcd.py (dashboard)
-├── deploy/                     # systemd install + uninstall scripts
-├── docs/lcd_st7796_test.md
-├── examples/roast_data_formats.json
-└── requirements.txt
+```json
+{
+  "timestamp": 1712345678.2,
+  "mean_grayscale": 94.7,
+  "ok": true,
+  "error": null
+}
 ```
 
-## GPIO pinout
+### `logs/roast_*.csv`
 
-Full wiring table (physical pins + BCM GPIO): **`docs/gpio_pinout.md`**.
+Created by `MPC_Control.py`.
 
-## LCD
+Each CSV row includes time, temperature, target, setpoint, heater output, fan speed, grayscale value, grayscale threshold, roast-done notification status, and control state.
 
-See `docs/lcd_st7796_test.md`. LCD code lives in `hardware/display/`. LCD uses **SPI1** (CS GPIO 17); thermocouple stays on **SPI0**.
+## Safety Notes
 
-## Troubleshooting
-
-### `/dev/spidev0.0` missing
-
-```bash
-sudo raspi-config   # Interface Options → SPI → Enable
-sudo reboot
-ls /dev/spidev*
-```
-
-Thermocouple CS: GPIO **7** (`THERMOCOUPLE_CS_GPIO`). Add user to `spi,gpio` if permission errors.
-
-### WebSocket 403 on `/ws/telemetry`
-
-Wrong server on port 8000 — run `main.py`, not `hardware_test.py`.
-
-### Thermocouple fault
-
-Fix probe wiring before enabling the heater.
+- The grayscale system is notification-only and must not replace operator judgement.
+- The emergency-stop and over-temperature safety behavior remain in `MPC_Control.py`.
+- If the camera worker stops, the main roast controller continues running. Grayscale will appear unavailable until the worker starts writing fresh values again.

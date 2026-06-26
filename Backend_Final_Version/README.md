@@ -74,7 +74,7 @@ $$
 
 where:
 
-- \(T_k\) = current bean temperature
+- \$$ T_k\ $$ = current bean temperature
 - \(T_{k+1}\) = predicted bean temperature one second later
 - \(T_{amb}\) = ambient temperature
 - \(u_k\) = heater duty cycle (%)

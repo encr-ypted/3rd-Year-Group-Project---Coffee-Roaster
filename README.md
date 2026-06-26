@@ -186,7 +186,7 @@ The objectives of this project were to:
 
 # Final Prototype
 
-![Complete Prototype](Coffee_roaster_Product.jpg)
+![Complete Prototype](CoffeeRoaster.jpg)
 
 The completed prototype integrates the roasting chamber, embedded electronics, touchscreen interface, Raspberry Pi camera and browser-based dashboard into a fully functional coffee roasting system.
 
@@ -232,7 +232,7 @@ Components include:
 
 - Raspberry Pi 4
 - MAX31855 thermocouple interface
-- Custom motor driver PCB
+- Custom motor driver Circuit
 - Raspberry Pi touchscreen display
 - 24 V → 6.2 V buck converter supplying the blower motor
 - Large smoothing capacitor connected to the buck converter output
@@ -245,7 +245,9 @@ The separation between high-voltage and low-voltage electronics also improves me
 
 # Custom Motor Driver
 
-Rather than using a commercial motor driver module, a custom PCB was designed specifically for the requirements of this project.
+![Motor Driver Circuit](Motor_Driver_Circuit.png)
+
+Rather than using a commercial motor driver module, a custom Circuit was designed specifically for the requirements of this project.
 
 The driver controls the blower motor while incorporating additional hardware safety features that operate independently of the Raspberry Pi software.
 
@@ -314,11 +316,13 @@ To compensate for these effects, the controller continuously adapts its thermal 
 
 This enables the controller to maintain accurate temperature prediction throughout the roast.
 
-The complete mathematical derivation, optimisation equations, thermal model and implementation are documented separately in the backend documentation.
+The complete mathematical derivation, optimisation equations, thermal model and implementation are documented separately in the backend documentation: [`Backend_Final_Version/README.md`](Backend_Final_Version/README.md).
 
 ---
 
 # Dashboard
+
+![Frontend](Frontend.png)
 
 A browser-based dashboard was developed to provide complete control and monitoring of the roasting process.
 
@@ -389,7 +393,7 @@ The completed prototype consists of:
 - Raspberry Pi touchscreen display
 - MAX31855 thermocouple interface
 - K-type thermocouple
-- Custom motor driver PCB
+- Custom motor driver Circuit
 
 ## Power Electronics
 
@@ -488,7 +492,6 @@ This project involved the integration of multiple engineering disciplines, inclu
 - Embedded Systems
 - Control Engineering
 - Power Electronics
-- PCB Design
 - Software Engineering
 - Computer Vision
 - Mechanical Design

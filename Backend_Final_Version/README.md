@@ -55,6 +55,7 @@ It uses SPI1 so it does not conflict with the MAX31855 thermocouple on SPI0.
 ### `requirements.txt`
 
 Python dependencies for the backend.
+
 ## Adaptive Model Predictive Control (MPC)
 
 The Smart Coffee Roaster uses an **Adaptive Model Predictive Controller (MPC)** to regulate bean temperature throughout the roast. Unlike a conventional PID controller, which reacts only to the current temperature error, the MPC predicts the future thermal behaviour of the roaster before selecting the optimum heater output. This approach is particularly well suited to coffee roasting because the process exhibits significant thermal inertia and transport delay, meaning changes in heater power may take several seconds to influence bean temperature.
@@ -65,9 +66,11 @@ At every one-second control interval, the controller predicts how the bean tempe
 
 The roaster is approximated using the first-order discrete thermal model
 
-\[
+
+$$
 T_{k+1}=T_{amb}+A(T_k-T_{amb})+Bu_k
-\]
+$$
+
 
 where:
 
@@ -92,9 +95,11 @@ Instead of assuming the future target temperature remains equal to the current s
 
 For every prediction step,
 
-\[
+
+$$
 r_{k+i}=\text{SetpointCurve}(t+i)
-\]
+$$
+
 
 where:
 
@@ -110,9 +115,11 @@ For each control interval, the controller predicts bean temperature over a finit
 
 For every candidate heater duty cycle between **0% and 100%**, the thermal model is recursively evaluated to generate the complete future temperature trajectory
 
-\[
+
+$$
 \{T_{k+1},T_{k+2},...,T_{k+N}\}
-\]
+$$
+
 
 where \(N\) is the prediction horizon.
 
@@ -133,9 +140,11 @@ After all candidate heater outputs have been evaluated, the heater duty cycle wi
 
 Mathematically,
 
-\[
+
+$$
 u^*=\arg\min_u J(u)
-\]
+$$
+
 
 where \(u^*\) represents the optimum heater duty cycle.
 
@@ -143,9 +152,11 @@ where \(u^*\) represents the optimum heater duty cycle.
 
 Each candidate heater output is assigned a cost according to
 
-\[
+
+$$
 J=\sum_{k=1}^{N}w_t(r_k-T_k)^2+\sum_{k=1}^{N}w_oO_k^2+w_h(u_k-u_{k-1})^2
-\]
+$$
+
 
 where:
 
@@ -157,9 +168,11 @@ where:
 
 The first term
 
-\[
+
+$$
 \sum_{k=1}^{N}w_t(r_k-T_k)^2
-\]
+$$
+
 
 penalises deviation between the predicted bean temperature and the desired roast profile throughout the prediction horizon. Larger tracking errors produce larger costs, encouraging the controller to follow the planned roast profile as accurately as possible.
 
@@ -167,9 +180,11 @@ penalises deviation between the predicted bean temperature and the desired roast
 
 The second term
 
-\[
+
+$$
 \sum_{k=1}^{N}w_oO_k^2
-\]
+$$
+
 
 penalises predicted overshoot above the desired roast profile.
 
@@ -179,9 +194,11 @@ Only temperatures exceeding the target contribute to this penalty, discouraging 
 
 The third term
 
-\[
+
+$$
 w_h(u_k-u_{k-1})^2
-\]
+$$
+
 
 penalises large changes in heater duty cycle between consecutive control intervals.
 

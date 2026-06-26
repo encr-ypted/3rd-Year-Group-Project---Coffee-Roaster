@@ -581,6 +581,6 @@ The complete backend implementation—including:
 
 is documented separately in:
 
-## ➜ **[`backend_final_version/README.md`](backend_final_version/README.md)**
+## ➜ **[`Backend_Final_Version/README.md`](Backend_Final_Version/README.md)**
 
 This document provides a detailed explanation of the control algorithms, mathematical equations, software architecture and implementation used by the Smart Coffee Roaster.

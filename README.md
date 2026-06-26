@@ -188,7 +188,7 @@ The objectives of this project were to:
 
 ![Complete Prototype](CoffeeRoaster1.jpg)
 
-The completed prototype integrates the roasting chamber, embedded electronics, touchscreen interface, Raspberry Pi camera and browser-based dashboard into a fully functional coffee roasting system.
+The completed prototype integrates the roasting chamber, embedded electronics, screen display, Raspberry Pi camera and browser-based dashboard into a fully functional coffee roasting system.
 
 The Raspberry Pi continuously monitors bean temperature using a K-type thermocouple before executing the selected roast profile using an Adaptive Model Predictive Controller (MPC). Throughout the roast, telemetry is streamed to the dashboard where the user can monitor live temperature, heater output, fan state, roast progress and the camera feed.
 
@@ -233,7 +233,7 @@ Components include:
 - Raspberry Pi 4
 - MAX31855 thermocouple interface
 - Custom motor driver Circuit
-- Raspberry Pi touchscreen display
+- Raspberry Pi screen display
 - 24 V → 6.2 V buck converter supplying the blower motor
 - Large smoothing capacitor connected to the buck converter output
 
@@ -249,20 +249,20 @@ The separation between high-voltage and low-voltage electronics also improves me
 
 Rather than using a commercial motor driver module, a custom Circuit was designed specifically for the requirements of this project.
 
-The driver controls the blower motor while incorporating additional hardware safety features that operate independently of the Raspberry Pi software.
+The driver controls the fan motor while incorporating additional hardware safety features that operate independently of the Raspberry Pi software.
 
 ## BJT Fail-Safe Design
 
 One of the primary safety considerations during development was ensuring continuous airflow over the heater.
 
-If the Raspberry Pi were to crash, lose power or become disconnected while the heater remained hot, stopping the blower could allow excessive temperatures to develop inside the roasting chamber.
+If the Raspberry Pi were to crash, lose power or become disconnected while the heater remained hot, stopping the fan (blower) could allow excessive temperatures to develop inside the roasting chamber, which results in melting the fan.
 
 To minimise this risk, the motor driver incorporates a **BJT-based fail-safe circuit**.
 
 The circuit is designed so that:
 
-- During normal operation the Raspberry Pi controls the blower speed.
-- If the Raspberry Pi loses power or becomes disconnected, the control transistor automatically defaults the blower **ON**.
+- During normal operation the Raspberry Pi controls the fan speed.
+- If the Raspberry Pi loses power or becomes disconnected, the control transistor automatically defaults the fan **ON**.
 - Continuous airflow cools the heater while preventing excessive heat build-up inside the roasting chamber.
 
 Unlike software safety mechanisms, this protection remains operational even if the Raspberry Pi itself has failed, providing an additional hardware layer of protection.
@@ -336,7 +336,6 @@ The dashboard displays:
 - Heater duty cycle
 - Fan duty cycle
 - Current operating state
-- Camera livestream
 - Roast timer
 - Roast presets
 
@@ -345,7 +344,7 @@ The user can also:
 - Start a roast
 - Stop and cool the roast
 - Perform an emergency stop
-- Test the blower motor
+- Test the fan (blower) motor
 - Select predefined roast profiles
 
 All roast telemetry is continuously logged and stored for later analysis.
@@ -390,7 +389,7 @@ The completed prototype consists of:
 
 - Raspberry Pi 4
 - Raspberry Pi Camera
-- Raspberry Pi touchscreen display
+- Raspberry Pi screen display
 - MAX31855 thermocouple interface
 - K-type thermocouple
 - Custom motor driver Circuit
@@ -551,7 +550,7 @@ The team would like to thank:
 
 - IBM for sponsoring and supporting the project.
 - The Department of Electronic Engineering for providing laboratory facilities and technical guidance.
-- The project supervisors and demonstrators for their continuous feedback throughout the design and testing process.
+- The project supervisor and lab technicians for their continuous feedback throughout the design and testing process.
 
 ---
 

@@ -66,20 +66,18 @@ At every one-second control interval, the controller predicts how the bean tempe
 
 The roaster is approximated using the first-order discrete thermal model
 
-
 $$
 T_{k+1}=T_{amb}+A(T_k-T_{amb})+Bu_k
 $$
 
-
 where:
 
-- \(T_k\) = current bean temperature
-- \(T_{k+1}\) = predicted bean temperature one second later
-- \(T_{amb}\) = ambient temperature
-- \(u_k\) = heater duty cycle (%)
-- \(A\) = heat retention coefficient
-- \(B\) = heater effectiveness coefficient
+* **Tₖ** = current bean temperature
+* **Tₖ₊₁** = predicted bean temperature one second later
+* **Tₐₘᵦ** = ambient temperature
+* **uₖ** = heater duty cycle (%)
+* **A** = heat retention coefficient
+* **B** = heater effectiveness coefficient
 
 The first term represents the ambient temperature surrounding the roaster.
 
@@ -95,17 +93,15 @@ Instead of assuming the future target temperature remains equal to the current s
 
 For every prediction step,
 
-
 $$
 r_{k+i}=\text{SetpointCurve}(t+i)
 $$
 
-
 where:
 
-- \(r_{k+i}\) is the desired future temperature,
-- \(t\) is the current roast time,
-- \(i\) is the prediction step.
+* **rₖ₊ᵢ** = desired future temperature
+* **t** = current roast time
+* **i** = prediction step
 
 This allows the controller to anticipate future temperature changes before they occur. As the sigmoid roast profile continues to rise, the MPC can begin increasing heater power in advance rather than waiting until the setpoint has already changed.
 
@@ -115,13 +111,11 @@ For each control interval, the controller predicts bean temperature over a finit
 
 For every candidate heater duty cycle between **0% and 100%**, the thermal model is recursively evaluated to generate the complete future temperature trajectory
 
-
 $$
-\{T_{k+1},T_{k+2},...,T_{k+N}\}
+{T_{k+1},T_{k+2},...,T_{k+N}}
 $$
 
-
-where \(N\) is the prediction horizon.
+where **N** is the prediction horizon.
 
 This enables the controller to compare the long-term consequences of different heater outputs rather than considering only the next measurement.
 
@@ -140,29 +134,26 @@ After all candidate heater outputs have been evaluated, the heater duty cycle wi
 
 Mathematically,
 
-
 $$
 u^*=\arg\min_u J(u)
 $$
 
-
-where \(u^*\) represents the optimum heater duty cycle.
+where **u*** represents the optimum heater duty cycle.
 
 ### Cost Function
 
 Each candidate heater output is assigned a cost according to
 
-
 $$
 J=\sum_{k=1}^{N}w_t(r_k-T_k)^2+\sum_{k=1}^{N}w_oO_k^2+w_h(u_k-u_{k-1})^2
 $$
 
-
 where:
 
-- \(w_t\) is the tracking-error weighting,
-- \(w_o\) is the overshoot weighting,
-- \(w_h\) is the heater-change weighting.
+* **wₜ** = tracking-error weighting
+* **wₒ** = overshoot weighting
+* **wₕ** = heater-change weighting
+
 
 #### Tracking Error
 

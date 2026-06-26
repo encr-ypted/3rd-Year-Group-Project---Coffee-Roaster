@@ -186,7 +186,7 @@ The objectives of this project were to:
 
 # Final Prototype
 
-![Complete Prototype](CoffeeRoaster.jpg)
+![Complete Prototype](CoffeeRoaster1.jpg)
 
 The completed prototype integrates the roasting chamber, embedded electronics, touchscreen interface, Raspberry Pi camera and browser-based dashboard into a fully functional coffee roasting system.
 

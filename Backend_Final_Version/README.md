@@ -55,6 +55,192 @@ It uses SPI1 so it does not conflict with the MAX31855 thermocouple on SPI0.
 ### `requirements.txt`
 
 Python dependencies for the backend.
+## Adaptive Model Predictive Control (MPC)
+
+The Smart Coffee Roaster uses an **Adaptive Model Predictive Controller (MPC)** to regulate bean temperature throughout the roast. Unlike a conventional PID controller, which reacts only to the current temperature error, the MPC predicts the future thermal behaviour of the roaster before selecting the optimum heater output. This approach is particularly well suited to coffee roasting because the process exhibits significant thermal inertia and transport delay, meaning changes in heater power may take several seconds to influence bean temperature.
+
+At every one-second control interval, the controller predicts how the bean temperature will evolve over a finite prediction horizon using a first-order discrete thermal model. Multiple candidate heater outputs are evaluated, and the one producing the lowest overall cost is selected and applied for the next control interval. This optimisation process is repeated every second throughout the roast.
+
+### Thermal Process Model
+
+The roaster is approximated using the first-order discrete thermal model
+
+\[
+T_{k+1}=T_{amb}+A(T_k-T_{amb})+Bu_k
+\]
+
+where:
+
+- \(T_k\) = current bean temperature
+- \(T_{k+1}\) = predicted bean temperature one second later
+- \(T_{amb}\) = ambient temperature
+- \(u_k\) = heater duty cycle (%)
+- \(A\) = heat retention coefficient
+- \(B\) = heater effectiveness coefficient
+
+The first term represents the ambient temperature surrounding the roaster.
+
+The second term models the thermal inertia of the roasting system by describing how much of the previous temperature is naturally retained between consecutive control intervals.
+
+The third term represents the heating contribution from the electric heater. Larger heater duty cycles produce greater increases in predicted bean temperature.
+
+Rather than using this model only once, the MPC repeatedly evaluates it to predict the complete future temperature trajectory.
+
+### Future Setpoint Prediction
+
+Instead of assuming the future target temperature remains equal to the current setpoint, the controller predicts the actual future roast profile.
+
+For every prediction step,
+
+\[
+r_{k+i}=\text{SetpointCurve}(t+i)
+\]
+
+where:
+
+- \(r_{k+i}\) is the desired future temperature,
+- \(t\) is the current roast time,
+- \(i\) is the prediction step.
+
+This allows the controller to anticipate future temperature changes before they occur. As the sigmoid roast profile continues to rise, the MPC can begin increasing heater power in advance rather than waiting until the setpoint has already changed.
+
+### Prediction Horizon
+
+For each control interval, the controller predicts bean temperature over a finite prediction horizon of approximately one minute.
+
+For every candidate heater duty cycle between **0% and 100%**, the thermal model is recursively evaluated to generate the complete future temperature trajectory
+
+\[
+\{T_{k+1},T_{k+2},...,T_{k+N}\}
+\]
+
+where \(N\) is the prediction horizon.
+
+This enables the controller to compare the long-term consequences of different heater outputs rather than considering only the next measurement.
+
+### Candidate Heater Evaluation
+
+At every control update, the controller evaluates every possible heater duty cycle from **0% to 100%**.
+
+For each candidate heater output:
+
+1. The future roast-profile setpoints are generated.
+2. Future bean temperatures are predicted across the prediction horizon.
+3. A total optimisation cost is calculated.
+4. The controller stores the total cost.
+
+After all candidate heater outputs have been evaluated, the heater duty cycle with the lowest predicted cost is selected and applied.
+
+Mathematically,
+
+\[
+u^*=\arg\min_u J(u)
+\]
+
+where \(u^*\) represents the optimum heater duty cycle.
+
+### Cost Function
+
+Each candidate heater output is assigned a cost according to
+
+\[
+J=\sum_{k=1}^{N}w_t(r_k-T_k)^2+\sum_{k=1}^{N}w_oO_k^2+w_h(u_k-u_{k-1})^2
+\]
+
+where:
+
+- \(w_t\) is the tracking-error weighting,
+- \(w_o\) is the overshoot weighting,
+- \(w_h\) is the heater-change weighting.
+
+#### Tracking Error
+
+The first term
+
+\[
+\sum_{k=1}^{N}w_t(r_k-T_k)^2
+\]
+
+penalises deviation between the predicted bean temperature and the desired roast profile throughout the prediction horizon. Larger tracking errors produce larger costs, encouraging the controller to follow the planned roast profile as accurately as possible.
+
+#### Overshoot Penalty
+
+The second term
+
+\[
+\sum_{k=1}^{N}w_oO_k^2
+\]
+
+penalises predicted overshoot above the desired roast profile.
+
+Only temperatures exceeding the target contribute to this penalty, discouraging overheating while still allowing aggressive heating when the measured temperature remains below the desired profile.
+
+#### Heater Smoothness
+
+The third term
+
+\[
+w_h(u_k-u_{k-1})^2
+\]
+
+penalises large changes in heater duty cycle between consecutive control intervals.
+
+Without this penalty, the optimiser may rapidly increase and decrease heater power, producing oscillatory behaviour. Penalising abrupt heater changes results in smoother control actions, reduced actuator switching, and improved thermal stability.
+
+### Adaptive Thermal Model
+
+Coffee roasting is not a constant thermal process.
+
+During roasting:
+
+- moisture evaporates,
+- bean density decreases,
+- airflow characteristics change,
+- heat losses vary,
+- the effectiveness of the heater changes.
+
+Consequently, a fixed thermal model gradually becomes inaccurate.
+
+To compensate, the controller continuously compares predicted and measured temperatures.
+
+If a sustained prediction error is detected, the heater effectiveness coefficient (**B**) is automatically adjusted within predefined minimum and maximum limits.
+
+If the measured temperature rises faster than predicted, the controller increases **B**, indicating that the heater is more effective than previously estimated.
+
+If the measured temperature rises more slowly than predicted, **B** is reduced.
+
+This adaptive mechanism continually improves model accuracy throughout the roast while preventing unrealistic parameter values.
+
+### Bean-Drop Detection
+
+Before roasting begins, the chamber is preheated to the selected temperature.
+
+When green coffee beans are added, the thermocouple detects the characteristic temperature drop caused by the colder beans entering the chamber.
+
+The controller automatically identifies this event, temporarily suspends normal roast control, waits until the temperature reaches its minimum, and detects the point at which the beans begin warming again.
+
+At this instant:
+
+- the roast timer is reset,
+- the sigmoid roast profile begins,
+- the MPC controller becomes active.
+
+This ensures the roast profile is synchronised with the true start of bean heating rather than the preheating stage.
+
+### Control Cycle
+
+Every second the controller performs the following sequence:
+
+1. Read the current bean temperature from the thermocouple.
+2. Generate future sigmoid roast-profile setpoints.
+3. Predict future bean temperatures for every candidate heater output.
+4. Calculate the optimisation cost for every candidate.
+5. Select the heater duty cycle producing the minimum cost.
+6. Apply the selected heater output.
+7. Update the adaptive heater-effectiveness coefficient if required.
+8. Record telemetry for the dashboard and CSV log files.
+
+This optimisation process repeats continuously throughout the roast, allowing the controller to accurately track a continuously changing roast profile while automatically compensating for changing thermal dynamics.
 
 ## Roast Flow
 

@@ -311,6 +311,13 @@ python webserver.py
 
 The server runs on port `8000`.
 
+### 4. Start the screen display
+
+```bash
+source venv/bin/activate
+python lcd.py
+```
+
 ## Generated Files
 
 ### `roaster_command.json`
